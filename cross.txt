@@ -1,0 +1,5 @@
+[binaries]
+c = 'x86_64-linux-gnu-gcc-12'
+cpp = 'x86_64-linux-gnu-g++-12'
+ar = 'x86_64-linux-gnu-ar'
+strip = 'x86_64-linux-gnu-strip'
