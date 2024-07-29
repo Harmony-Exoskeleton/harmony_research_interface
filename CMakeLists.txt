@@ -7,7 +7,7 @@ cmake_minimum_required(VERSION 3.5)
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-project(harmony_research_interface_torque LANGUAGES CXX)
+project(harmony_research_interface_torque_lib LANGUAGES CXX)
 
 # Install folder
 set(CMAKE_INSTALL_PREFIX $ENV{HOME}/harmony_research)
