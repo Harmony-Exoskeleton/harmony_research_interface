@@ -165,7 +165,7 @@ void* main_loop(void* arg){
     }
 
     PLOGI << "Research Interface stopped";
-
+    return nullptr;
 }
 
 /******************************************************************************************
