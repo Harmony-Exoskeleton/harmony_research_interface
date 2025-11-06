@@ -75,4 +75,5 @@ Thumbs.db
 # Folders
 build
 log
+.cache
 
