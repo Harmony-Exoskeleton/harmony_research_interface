@@ -8,25 +8,9 @@ project(${PROJECT_NAME})
 
 message(STATUS "Ready to build ${PROJECT_NAME}")
 
-# Find system-installed Eigen3 (required)
-find_package(Eigen3 REQUIRED)
-message(STATUS "Using system-installed Eigen3")
-set(EIGEN_TARGET Eigen3::Eigen)
-
-# Helper function to link dependencies to a target
-function(link_file_handling_dependencies target_name visibility)
-    # Link Eigen (system-installed)
-    target_link_libraries(${target_name} ${visibility} ${EIGEN_TARGET})
-    
-    # Link plog
-    if(TARGET plog)
-        target_link_libraries(${target_name} ${visibility} plog)
-    else()
-        target_include_directories(${target_name} ${visibility}
-            ${CMAKE_CURRENT_SOURCE_DIR}/../plog/include
-        )
-    endif()
-endfunction()
+# Define include directories for dependencies
+set(EIGEN_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../eigen_library)
+set(PLOG_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../plog/include)
 
 # Try to find pre-built library first
 find_library(FILE_HANDLING_LIB file_handling
@@ -44,9 +28,9 @@ if(FILE_HANDLING_LIB)
     target_include_directories(file_handling INTERFACE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${CMAKE_CURRENT_SOURCE_DIR}/include/json/single_include/nlohmann
+        ${EIGEN_INCLUDE_DIR}
+        ${PLOG_INCLUDE_DIR}
     )
-    
-    link_file_handling_dependencies(file_handling INTERFACE)
 else()
     message(STATUS "File handling library not found, building from source")
     
@@ -66,10 +50,9 @@ else()
         $<INSTALL_INTERFACE:include>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/json/single_include/nlohmann>
         $<INSTALL_INTERFACE:include/json/single_include/nlohmann>
+        $<BUILD_INTERFACE:${EIGEN_INCLUDE_DIR}>
+        $<BUILD_INTERFACE:${PLOG_INCLUDE_DIR}>
     )
-    
-    # Link dependencies
-    link_file_handling_dependencies(file_handling PUBLIC)
     
     # Install targets
     install(TARGETS file_handling DESTINATION lib)
