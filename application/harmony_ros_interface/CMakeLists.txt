@@ -15,7 +15,7 @@ target_link_libraries(${THIS_APP_NAME}
         file_handling
         eigen
         plog
-        rosbridge2cpp  # ROS bridge library
+        rosbridge_client_cpp  # ROS bridge library
 )
 
 # Install targets
