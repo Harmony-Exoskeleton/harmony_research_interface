@@ -6,7 +6,7 @@
 # Eigen library
 add_library(eigen INTERFACE)
 target_include_directories(eigen INTERFACE
-    ${CMAKE_CURRENT_SOURCE_DIR}/eigen_library
+    ${CMAKE_CURRENT_SOURCE_DIR}/eigen
 )
 
 # PLOG library

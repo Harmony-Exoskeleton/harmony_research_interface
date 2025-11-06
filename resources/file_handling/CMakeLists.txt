@@ -9,7 +9,7 @@ project(${PROJECT_NAME})
 message(STATUS "Ready to build ${PROJECT_NAME}")
 
 # Define include directories for dependencies
-set(EIGEN_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../eigen_library)
+set(EIGEN_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../eigen)
 set(PLOG_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../plog/include)
 
 # Try to find pre-built library first
