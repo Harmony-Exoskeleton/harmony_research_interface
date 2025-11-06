@@ -8,7 +8,11 @@ file(GLOB THIS_APP_HEADERS *.h)
 
 # Create executables and link libraries
 add_executable(${THIS_APP_NAME} ${THIS_APP_SOURCES} ${THIS_APP_HEADERS})
-target_link_libraries(${THIS_APP_NAME} harmony_research file_handling)
+target_link_libraries(${THIS_APP_NAME} 
+    PRIVATE
+        harmony_research
+        file_handling  # Propagates eigen and plog
+)
 
 # Install targets
 install(TARGETS ${THIS_APP_NAME} DESTINATION bin)
