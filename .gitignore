@@ -76,4 +76,5 @@ Thumbs.db
 build
 log
 .cache
+.vscode
 
