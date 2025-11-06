@@ -7,18 +7,13 @@
 
 /*****************************************************************************************
  * INCLUDES
- ****************************************************************************************/
-#include <json.hpp>
-#include <Eigen/Dense>
+****************************************************************************************/
+#include <nlohmann/json.hpp>
+#include <Eigen/Core>
 #include <fstream>
-#include <iostream>
-#include <sstream>
-#include <map>
-#include <set>
 #include <math.h>
 #include <string>
 #include <plog/Log.h>
-#include "data_types_handling.h"
 
 /*****************************************************************************************
  * DEFINITIONS
