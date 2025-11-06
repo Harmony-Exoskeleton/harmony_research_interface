@@ -1,0 +1,4 @@
+[submodule "resources/rosbridge_client_cpp"]
+	path = resources/rosbridge_client_cpp
+	url = https://github.com/stex2005/rosbridge_client_cpp.git
+
