@@ -25,6 +25,8 @@
 #include <chrono>
 #include <string>
 #include <cstdlib>
+#include <iomanip>
+#include <iostream>
 
 using namespace std;
 using namespace rosbridge2cpp;
@@ -34,7 +36,8 @@ using namespace harmony;
  * DEFINES
  *****************************************************************************************/
 
-#define DEFAULT_LOOP_TIME_MS 10
+#define DEFAULT_LOOP_FREQUENCY_HZ 100
+#define LOG_FREQUENCY_HZ 1  // Fixed at 1 Hz (log once per second)
 #define ROSBRIDGE_DEFAULT_PORT 9090
 #define ROSBRIDGE_DEFAULT_HOST "127.0.0.1"
 
@@ -86,11 +89,16 @@ void publish_joint_states() {
     msg.SetObject();
     auto& allocator = msg.GetAllocator();
 
-    // Header
+    // Header with timestamp
+    auto now = std::chrono::system_clock::now();
+    auto duration = now.time_since_epoch();
+    auto seconds = std::chrono::duration_cast<std::chrono::seconds>(duration);
+    auto nanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(duration - seconds);
+    
     rapidjson::Value header(rapidjson::kObjectType);
     rapidjson::Value stamp(rapidjson::kObjectType);
-    stamp.AddMember("sec", 0, allocator);
-    stamp.AddMember("nanosec", 0, allocator);
+    stamp.AddMember("sec", static_cast<int64_t>(seconds.count()), allocator);
+    stamp.AddMember("nanosec", static_cast<uint32_t>(nanoseconds.count()), allocator);
     header.AddMember("stamp", stamp, allocator);
     header.AddMember("frame_id", rapidjson::Value("", allocator), allocator);
     msg.AddMember("header", header, allocator);
@@ -135,13 +143,59 @@ void publish_joint_states() {
     }
     msg.AddMember("effort", efforts, allocator);
 
+    // Publish a message
     g_joint_state_pub->Publish(msg);
 }
 
 /******************************************************************************************
  * MAIN
  *****************************************************************************************/
+
+void print_help(const char* program_name) {
+    std::cout << "Harmony ROS Interface\n"
+              << "ROS interface for Harmony research interface using rosbridge\n\n"
+              << "Usage: " << program_name << " [OPTIONS] [LOOP_FREQUENCY_HZ]\n\n"
+              << "Arguments:\n"
+              << "  LOOP_FREQUENCY_HZ    Publishing loop frequency in Hz (default: " << DEFAULT_LOOP_FREQUENCY_HZ << ")\n\n"
+              << "Options:\n"
+              << "  -h, --help           Show this help message and exit\n\n"
+              << "Note:\n"
+              << "  Logging frequency is fixed at " << LOG_FREQUENCY_HZ << " Hz (logs once per second)\n\n"
+              << "Environment Variables:\n"
+              << "  ROSBRIDGE_HOST       ROSBridge server host (default: 127.0.0.1)\n"
+              << "  ROSBRIDGE_PORT       ROSBridge server port (default: 9090)\n\n"
+              << "Examples:\n"
+              << "  " << program_name << "              # Loop at " << DEFAULT_LOOP_FREQUENCY_HZ << " Hz (default)\n"
+              << "  " << program_name << " 200          # Loop at 200 Hz\n"
+              << "  " << program_name << " --help       # Show this help message\n"
+              << std::endl;
+}
+
 int main(int argc, char* argv[]) {
+
+    // Check for help argument
+    if (argc >= 2) {
+        std::string arg = argv[1];
+        if (arg == "--help" || arg == "-h") {
+            print_help(argv[0]);
+            return 0;
+        }
+    }
+
+    // Parse command-line arguments
+    double loop_frequency_hz = DEFAULT_LOOP_FREQUENCY_HZ;
+    if (argc >= 2) {
+        try {
+            loop_frequency_hz = std::stod(argv[1]);
+            if (loop_frequency_hz <= 0) {
+                PLOGE << "Loop frequency must be positive. Using default: " << DEFAULT_LOOP_FREQUENCY_HZ;
+                loop_frequency_hz = DEFAULT_LOOP_FREQUENCY_HZ;
+            }
+        } catch (const std::exception& e) {
+            PLOGE << "Invalid loop frequency argument. Using default: " << DEFAULT_LOOP_FREQUENCY_HZ;
+            loop_frequency_hz = DEFAULT_LOOP_FREQUENCY_HZ;
+        }
+    }
 
     // Initialize logging
     static plog::RollingFileAppender<plog::CsvFormatter> fileAppender("log/harmony_ros_interface_log.csv", 80000, 10);
@@ -151,6 +205,8 @@ int main(int argc, char* argv[]) {
     plog::get()->addAppender(&consoleAppender);
 
     PLOGI << "Harmony ROS Interface starting...";
+    PLOGI << "Loop frequency: " << loop_frequency_hz << " Hz";
+    PLOGI << "Log frequency: " << LOG_FREQUENCY_HZ << " Hz (fixed)";
 
     // Initialize Research Interface
     ResearchInterface research_interface;
@@ -198,13 +254,38 @@ int main(int argc, char* argv[]) {
     g_joint_state_pub = &joint_state_pub;
     PLOGI << "Created joint state publisher: /harmony/joint_states";
 
-    auto loop_period = std::chrono::milliseconds(DEFAULT_LOOP_TIME_MS);
+    // Calculate loop period from loop frequency (use microseconds for precision)
+    auto loop_period = std::chrono::microseconds(static_cast<int>(1000000.0 / loop_frequency_hz));
     auto next_cycle = std::chrono::steady_clock::now();
+
+    // Track publishes for periodic logging (fixed at 1 Hz)
+    int loop_count = -1;
+    auto start_time = std::chrono::steady_clock::now();
 
     while (true) {
 
         // Publish all data (following pattern from data_logger and value_printer)
         publish_joint_states();
+        loop_count++;
+
+        // Log at fixed 1 Hz frequency (once per second)
+        auto current_time = std::chrono::steady_clock::now();
+        int publishes_per_log = static_cast<int>(loop_frequency_hz / LOG_FREQUENCY_HZ);
+        if (publishes_per_log > 0 && loop_count % publishes_per_log == 0) {
+            // Calculate actual Hz based on publishes in the last second
+            auto time_since_start = std::chrono::duration_cast<std::chrono::microseconds>(
+                current_time - start_time).count();
+            
+            double actual_hz = loop_count * 1e6 / (time_since_start);
+
+            PLOGI << "Last published (count: " << loop_count << ", Hz: " 
+                  << std::fixed << std::setprecision(2) << actual_hz << ")";
+            
+            auto last_msg = g_joint_state_pub->GetLastPublishedMessage();
+            if (!last_msg.empty()) {
+                PLOGD << "Last published message: " << last_msg;
+            }
+        }
 
         // Sleep until next cycle
         next_cycle += loop_period;
