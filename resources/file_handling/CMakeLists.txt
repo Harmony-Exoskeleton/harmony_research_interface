@@ -65,4 +65,4 @@ add_custom_command(TARGET file_handling POST_BUILD
 )
 
 # Install targets (for system installation if needed)
-install(TARGETS file_handling DESTINATION lib)
+# install(TARGETS file_handling DESTINATION lib)

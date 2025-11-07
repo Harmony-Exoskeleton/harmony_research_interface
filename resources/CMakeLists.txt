@@ -21,5 +21,4 @@ add_subdirectory(file_handling)
 
 # Rosbridge Client CPP library
 # Compiled library with proper include directories and dependencies
-# The rosbridge_client_cpp target provides headers and links against required libraries
 add_subdirectory(rosbridge_client_cpp)
