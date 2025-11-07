@@ -46,16 +46,7 @@ using namespace harmony;
  *****************************************************************************************/
 
 static ResearchInterface* g_research_interface = nullptr;
-static ROSBridge* g_ros_bridge = nullptr;
 static ROSTopic* g_joint_state_pub = nullptr;
-static ROSTopic* g_left_pose_pub = nullptr;
-static ROSTopic* g_right_pose_pub = nullptr;
-static ROSTopic* g_left_sizes_pub = nullptr;
-static ROSTopic* g_right_sizes_pub = nullptr;
-static ROSTopic* g_left_arm_torque_sub = nullptr;
-static ROSTopic* g_right_arm_torque_sub = nullptr;
-static ArmController* g_left_arm_controller = nullptr;
-static ArmController* g_right_arm_controller = nullptr;
 
 /******************************************************************************************
  * ROS CALLBACKS
@@ -63,10 +54,10 @@ static ArmController* g_right_arm_controller = nullptr;
 
 void connection_error_handler(TransportError err) {
     if (err == TransportError::R2C_CONNECTION_CLOSED) {
-        PLOGE << "ROSBridge2cpp connection closed - You should reinit ROSBridge2cpp";
+        PLOGE << "ROSBridge connection closed - reconnecting...";
     }
     if (err == TransportError::R2C_SOCKET_ERROR) {
-        PLOGE << "Error on ROSBridge2cpp Socket - You should reinit ROSBridge2cpp";
+        PLOGE << "ROSBridge socket error - reconnecting...";
     }
 }
 
@@ -221,22 +212,15 @@ int main(int argc, char* argv[]) {
     // Initialize ROS Bridge
     SocketWebSocketConnection transport;
     transport.RegisterErrorCallback(connection_error_handler);
-
     ROSBridge ros_bridge(transport);
-    g_ros_bridge = &ros_bridge;
 
-    // Get ROS bridge connection parameters from environment or use defaults
+    // Get connection parameters from environment or use defaults
     const char* ros_host = getenv("ROSBRIDGE_HOST");
     const char* ros_port_str = getenv("ROSBRIDGE_PORT");
-    int ros_port = ROSBRIDGE_DEFAULT_PORT;
-    
-    if (ros_port_str) {
-        ros_port = std::stoi(ros_port_str);
-    }
-
+    int ros_port = ros_port_str ? std::stoi(ros_port_str) : ROSBRIDGE_DEFAULT_PORT;
     std::string host = ros_host ? ros_host : ROSBRIDGE_DEFAULT_HOST;
 
-    PLOGI << "Attempting to connect to ROSBridge server at " << host << ":" << ros_port;
+    PLOGI << "Connecting to ROSBridge server at " << host << ":" << ros_port;
     if (!ros_bridge.Init(host.c_str(), ros_port)) {
         PLOGE << "Failed to connect to ROSBridge server!";
         PLOGE << "Please ensure that:";
@@ -254,40 +238,38 @@ int main(int argc, char* argv[]) {
     g_joint_state_pub = &joint_state_pub;
     PLOGI << "Created joint state publisher: /harmony/joint_states";
 
-    // Calculate loop period from loop frequency (use microseconds for precision)
+    // Main loop setup
     auto loop_period = std::chrono::microseconds(static_cast<int>(1000000.0 / loop_frequency_hz));
     auto next_cycle = std::chrono::steady_clock::now();
-
-    // Track publishes for periodic logging (fixed at 1 Hz)
     int loop_count = -1;
     auto start_time = std::chrono::steady_clock::now();
+    int publishes_per_log = static_cast<int>(loop_frequency_hz / LOG_FREQUENCY_HZ);
 
+    // Main publishing loop
     while (true) {
-
-        // Publish all data (following pattern from data_logger and value_printer)
         publish_joint_states();
         loop_count++;
 
-        // Log at fixed 1 Hz frequency (once per second)
-        auto current_time = std::chrono::steady_clock::now();
-        int publishes_per_log = static_cast<int>(loop_frequency_hz / LOG_FREQUENCY_HZ);
+        // Log at fixed 1 Hz frequency (only when connected)
         if (publishes_per_log > 0 && loop_count % publishes_per_log == 0) {
-            // Calculate actual Hz based on publishes in the last second
-            auto time_since_start = std::chrono::duration_cast<std::chrono::microseconds>(
-                current_time - start_time).count();
-            
-            double actual_hz = loop_count * 1e6 / (time_since_start);
+            // Only log if connected (not reconnecting)
+            if (transport.IsConnected()) {
+                auto current_time = std::chrono::steady_clock::now();
+                auto time_since_start = std::chrono::duration_cast<std::chrono::microseconds>(
+                    current_time - start_time).count();
+                
+                double actual_hz = (time_since_start > 0) ? (loop_count * 1e6 / time_since_start) : 0.0;
 
-            PLOGI << "Last published (count: " << loop_count << ", Hz: " 
-                  << std::fixed << std::setprecision(2) << actual_hz << ")";
-            
-            auto last_msg = g_joint_state_pub->GetLastPublishedMessage();
-            if (!last_msg.empty()) {
-                PLOGD << "Last published message: " << last_msg;
+                PLOGI << "Last published (count: " << loop_count << ", Hz: " 
+                      << std::fixed << std::setprecision(2) << actual_hz << ")";
+                
+                auto last_msg = g_joint_state_pub->GetLastPublishedMessage();
+                if (!last_msg.empty()) {
+                    PLOGD << "Last published message: " << last_msg;
+                }
             }
         }
 
-        // Sleep until next cycle
         next_cycle += loop_period;
         std::this_thread::sleep_until(next_cycle);
     }
