@@ -46,7 +46,8 @@ using namespace harmony;
  *****************************************************************************************/
 
 static ResearchInterface* g_research_interface = nullptr;
-static ROSTopic* g_joint_state_pub = nullptr;
+static ROSTopic* g_left_joint_state_pub = nullptr;
+static ROSTopic* g_right_joint_state_pub = nullptr;
 
 /******************************************************************************************
  * ROS CALLBACKS
@@ -54,7 +55,7 @@ static ROSTopic* g_joint_state_pub = nullptr;
 
 void connection_error_handler(TransportError err) {
     if (err == TransportError::R2C_CONNECTION_CLOSED) {
-        PLOGE << "ROSBridge connection closed - reconnecting...";
+        PLOGW << "ROSBridge connection closed - reconnecting...";
     }
     if (err == TransportError::R2C_SOCKET_ERROR) {
         PLOGE << "ROSBridge socket error - reconnecting...";
@@ -65,17 +66,7 @@ void connection_error_handler(TransportError err) {
  * ROS PUBLISHING
  *****************************************************************************************/
 
-void publish_joint_states() {
-    if (!g_research_interface || !g_joint_state_pub) {
-        return;
-    }
-
-    auto joint_states = g_research_interface->joints();
-    auto left_states = joint_states.leftArm.getOrderedStates();
-    auto right_states = joint_states.rightArm.getOrderedStates();
-
-    // Create joint state message
-    // Format: sensor_msgs/JointState
+rapidjson::Document create_joint_state_message(const std::array<JointState, armJointCount>& states) {
     rapidjson::Document msg;
     msg.SetObject();
     auto& allocator = msg.GetAllocator();
@@ -97,10 +88,8 @@ void publish_joint_states() {
     // Joint names
     rapidjson::Value names(rapidjson::kArrayType);
     const char* joint_names[] = {
-        "left_scapular_elevation", "left_scapular_protraction", "left_shoulder_abduction",
-        "left_shoulder_rotation", "left_shoulder_flexion", "left_elbow_flexion", "left_wrist_pronation",
-        "right_scapular_elevation", "right_scapular_protraction", "right_shoulder_abduction",
-        "right_shoulder_rotation", "right_shoulder_flexion", "right_elbow_flexion", "right_wrist_pronation"
+        "j1_scapular_elevation", "j2_scapular_protraction", "j3_shoulder_abduction",
+        "j4_shoulder_rotation", "j5_shoulder_flexion", "j6_elbow_flexion", "j7_wrist_pronation"
     };
     for (const char* name : joint_names) {
         names.PushBack(rapidjson::Value(name, allocator), allocator);
@@ -109,33 +98,45 @@ void publish_joint_states() {
 
     // Positions
     rapidjson::Value positions(rapidjson::kArrayType);
-    for (const auto& state : left_states) {
-        positions.PushBack(state.position_rad, allocator);
-    }
-    for (const auto& state : right_states) {
+    for (const auto& state : states) {
         positions.PushBack(state.position_rad, allocator);
     }
     msg.AddMember("position", positions, allocator);
 
     // Velocities (not available, set to zero)
     rapidjson::Value velocities(rapidjson::kArrayType);
-    for (size_t i = 0; i < 2 * armJointCount; ++i) {
+    for (size_t i = 0; i < armJointCount; ++i) {
+        // TODO: Add velocity data
         velocities.PushBack(0.0, allocator);
     }
     msg.AddMember("velocity", velocities, allocator);
 
     // Efforts (torques)
     rapidjson::Value efforts(rapidjson::kArrayType);
-    for (const auto& state : left_states) {
-        efforts.PushBack(state.torque_Nm, allocator);
-    }
-    for (const auto& state : right_states) {
+    for (const auto& state : states) {
         efforts.PushBack(state.torque_Nm, allocator);
     }
     msg.AddMember("effort", efforts, allocator);
 
-    // Publish a message
-    g_joint_state_pub->Publish(msg);
+    return msg;
+}
+
+void publish_joint_states() {
+    if (!g_research_interface || !g_left_joint_state_pub || !g_right_joint_state_pub) {
+        return;
+    }
+
+    auto joint_states = g_research_interface->joints();
+    auto left_states = joint_states.leftArm.getOrderedStates();
+    auto right_states = joint_states.rightArm.getOrderedStates();
+
+    // Create and publish left arm joint states
+    rapidjson::Document left_msg = create_joint_state_message(left_states);
+    g_left_joint_state_pub->Publish(left_msg);
+
+    // Create and publish right arm joint states
+    rapidjson::Document right_msg = create_joint_state_message(right_states);
+    g_right_joint_state_pub->Publish(right_msg);
 }
 
 /******************************************************************************************
@@ -143,23 +144,22 @@ void publish_joint_states() {
  *****************************************************************************************/
 
 void print_help(const char* program_name) {
-    std::cout << "Harmony ROS Interface\n"
-              << "ROS interface for Harmony research interface using rosbridge\n\n"
-              << "Usage: " << program_name << " [OPTIONS] [LOOP_FREQUENCY_HZ]\n\n"
-              << "Arguments:\n"
-              << "  LOOP_FREQUENCY_HZ    Publishing loop frequency in Hz (default: " << DEFAULT_LOOP_FREQUENCY_HZ << ")\n\n"
-              << "Options:\n"
-              << "  -h, --help           Show this help message and exit\n\n"
-              << "Note:\n"
-              << "  Logging frequency is fixed at " << LOG_FREQUENCY_HZ << " Hz (logs once per second)\n\n"
-              << "Environment Variables:\n"
-              << "  ROSBRIDGE_HOST       ROSBridge server host (default: 127.0.0.1)\n"
-              << "  ROSBRIDGE_PORT       ROSBridge server port (default: 9090)\n\n"
-              << "Examples:\n"
-              << "  " << program_name << "              # Loop at " << DEFAULT_LOOP_FREQUENCY_HZ << " Hz (default)\n"
-              << "  " << program_name << " 200          # Loop at 200 Hz\n"
-              << "  " << program_name << " --help       # Show this help message\n"
-              << std::endl;
+    PLOGI << "Harmony ROS Interface - ROS interface for Harmony research interface using rosbridge";
+    PLOGI << "Usage: " << program_name << " [LOOP_FREQUENCY_HZ]";
+    PLOGI << "  LOOP_FREQUENCY_HZ    Publishing frequency in Hz (default: " << DEFAULT_LOOP_FREQUENCY_HZ << ")";
+    PLOGI << "  -h, --help           Show this help message";
+    PLOGI << "Environment: ROSBRIDGE_HOST (default: 127.0.0.1), ROSBRIDGE_PORT (default: 9090)";
+    PLOGI << "Example: " << program_name << " 200  # Loop at 200 Hz";
+}
+
+void print_connection_error(const int ros_port) {
+    PLOGE << "Failed to connect to ROSBridge server!";
+    PLOGE << "Please ensure that:";
+    PLOGE << "1. ROS/ROS2 is running";
+    PLOGE << "2. ROSBridge server is running:";
+    PLOGE << "   For ROS2: ros2 run rosbridge_server rosbridge_websocket";
+    PLOGE << "   For ROS1: roslaunch rosbridge_server rosbridge_websocket.launch";
+    PLOGE << "3. The server is listening on port " << ros_port;
 }
 
 int main(int argc, char* argv[]) {
@@ -212,6 +212,7 @@ int main(int argc, char* argv[]) {
     // Initialize ROS Bridge
     SocketWebSocketConnection transport;
     transport.RegisterErrorCallback(connection_error_handler);
+
     ROSBridge ros_bridge(transport);
 
     // Get connection parameters from environment or use defaults
@@ -222,21 +223,19 @@ int main(int argc, char* argv[]) {
 
     PLOGI << "Connecting to ROSBridge server at " << host << ":" << ros_port;
     if (!ros_bridge.Init(host.c_str(), ros_port)) {
-        PLOGE << "Failed to connect to ROSBridge server!";
-        PLOGE << "Please ensure that:";
-        PLOGE << "1. ROS/ROS2 is running";
-        PLOGE << "2. ROSBridge server is running:";
-        PLOGE << "   For ROS2: ros2 run rosbridge_server rosbridge_websocket";
-        PLOGE << "   For ROS1: roslaunch rosbridge_server rosbridge_websocket.launch";
-        PLOGE << "3. The server is listening on port " << ros_port;
+        print_connection_error(ros_port);
         return 1;
     }
     PLOGI << "Successfully connected to ROSBridge server!";
 
-    // Create ROS topics
-    ROSTopic joint_state_pub(ros_bridge, "/harmony/joint_states", "sensor_msgs/JointState");
-    g_joint_state_pub = &joint_state_pub;
-    PLOGI << "Created joint state publisher: /harmony/joint_states";
+    // Create ROS topics for left and right arms
+    ROSTopic left_joint_state_pub(ros_bridge, "/harmony/left/joint_states", "sensor_msgs/JointState");
+    ROSTopic right_joint_state_pub(ros_bridge, "/harmony/right/joint_states", "sensor_msgs/JointState");
+    g_left_joint_state_pub = &left_joint_state_pub;
+    g_right_joint_state_pub = &right_joint_state_pub;
+    PLOGI << "Created joint state publishers:";
+    PLOGI << "  Left arm:  /harmony/left/joint_states";
+    PLOGI << "  Right arm: /harmony/right/joint_states";
 
     // Main loop setup
     auto loop_period = std::chrono::microseconds(static_cast<int>(1000000.0 / loop_frequency_hz));
@@ -263,9 +262,14 @@ int main(int argc, char* argv[]) {
                 PLOGI << "Last published (count: " << loop_count << ", Hz: " 
                       << std::fixed << std::setprecision(2) << actual_hz << ")";
                 
-                auto last_msg = g_joint_state_pub->GetLastPublishedMessage();
-                if (!last_msg.empty()) {
-                    PLOGD << "Last published message: " << last_msg;
+                auto last_left_msg = g_left_joint_state_pub->GetLastPublishedMessage();
+                auto last_right_msg = g_right_joint_state_pub->GetLastPublishedMessage();
+
+                if (!last_left_msg.empty()) {
+                    PLOGI << "Last published left arm message: " << last_left_msg;
+                }
+                if (!last_right_msg.empty()) {
+                    PLOGI << "Last published right arm message: " << last_right_msg;
                 }
             }
         }
