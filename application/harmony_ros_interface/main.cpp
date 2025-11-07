@@ -21,6 +21,8 @@
 #include "types.h"
 #include "client/socket_websocket_connection.h"
 #include "rapidjson/document.h"
+#include "harmony_services.h"
+#include "message_utils.h"
 
 #include <thread>
 #include <chrono>
@@ -78,142 +80,6 @@ void connection_error_handler(TransportError err) {
  * ROS PUBLISHING
  *****************************************************************************************/
 
-rapidjson::Document create_joint_state_message(const std::array<JointState, armJointCount>& states) {
-    rapidjson::Document msg;
-    msg.SetObject();
-    auto& allocator = msg.GetAllocator();
-
-    // Header with timestamp
-    auto now = std::chrono::system_clock::now();
-    auto duration = now.time_since_epoch();
-    auto seconds = std::chrono::duration_cast<std::chrono::seconds>(duration);
-    auto nanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(duration - seconds);
-    
-    rapidjson::Value header(rapidjson::kObjectType);
-    rapidjson::Value stamp(rapidjson::kObjectType);
-    stamp.AddMember("sec", static_cast<int64_t>(seconds.count()), allocator);
-    stamp.AddMember("nanosec", static_cast<uint32_t>(nanoseconds.count()), allocator);
-    header.AddMember("stamp", stamp, allocator);
-    header.AddMember("frame_id", rapidjson::Value("", allocator), allocator);
-    msg.AddMember("header", header, allocator);
-
-    // Joint names
-    rapidjson::Value names(rapidjson::kArrayType);
-    const char* joint_names[] = {
-        "j1_scapular_elevation", "j2_scapular_protraction", "j3_shoulder_abduction",
-        "j4_shoulder_rotation", "j5_shoulder_flexion", "j6_elbow_flexion", "j7_wrist_pronation"
-    };
-    for (const char* name : joint_names) {
-        names.PushBack(rapidjson::Value(name, allocator), allocator);
-    }
-    msg.AddMember("name", names, allocator);
-
-    // Positions
-    rapidjson::Value positions(rapidjson::kArrayType);
-    for (const auto& state : states) {
-        positions.PushBack(state.position_rad, allocator);
-    }
-    msg.AddMember("position", positions, allocator);
-
-    // Velocities (not available, set to zero)
-    rapidjson::Value velocities(rapidjson::kArrayType);
-    for (size_t i = 0; i < armJointCount; ++i) {
-        // TODO: Add velocity data
-        velocities.PushBack(0.0, allocator);
-    }
-    msg.AddMember("velocity", velocities, allocator);
-
-    // Efforts (torques)
-    rapidjson::Value efforts(rapidjson::kArrayType);
-    for (const auto& state : states) {
-        efforts.PushBack(state.torque_Nm, allocator);
-    }
-    msg.AddMember("effort", efforts, allocator);
-
-    return msg;
-}
-
-rapidjson::Document create_transform_message(const Pose& pose, const std::string& parent_frame, const std::string& child_frame) {
-    rapidjson::Document msg;
-    msg.SetObject();
-    auto& allocator = msg.GetAllocator();
-
-    // Header with timestamp
-    auto now = std::chrono::system_clock::now();
-    auto duration = now.time_since_epoch();
-    auto seconds = std::chrono::duration_cast<std::chrono::seconds>(duration);
-    auto nanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(duration - seconds);
-    
-    rapidjson::Value header(rapidjson::kObjectType);
-    rapidjson::Value stamp(rapidjson::kObjectType);
-    stamp.AddMember("sec", static_cast<int64_t>(seconds.count()), allocator);
-    stamp.AddMember("nanosec", static_cast<uint32_t>(nanoseconds.count()), allocator);
-    header.AddMember("stamp", stamp, allocator);
-    header.AddMember("frame_id", rapidjson::Value(parent_frame.c_str(), allocator), allocator);
-    msg.AddMember("header", header, allocator);
-    msg.AddMember("child_frame_id", rapidjson::Value(child_frame.c_str(), allocator), allocator);
-
-    // Transform: translation (convert mm to m) and rotation
-    rapidjson::Value transform(rapidjson::kObjectType);
-    
-    // Translation
-    rapidjson::Value translation(rapidjson::kObjectType);
-    translation.AddMember("x", pose.position_mm.x / 1000.0, allocator);
-    translation.AddMember("y", pose.position_mm.y / 1000.0, allocator);
-    translation.AddMember("z", pose.position_mm.z / 1000.0, allocator);
-    transform.AddMember("translation", translation, allocator);
-    
-    // Rotation (quaternion)
-    rapidjson::Value rotation(rapidjson::kObjectType);
-    rotation.AddMember("x", pose.orientation.x, allocator);
-    rotation.AddMember("y", pose.orientation.y, allocator);
-    rotation.AddMember("z", pose.orientation.z, allocator);
-    rotation.AddMember("w", pose.orientation.w, allocator);
-    transform.AddMember("rotation", rotation, allocator);
-    
-    msg.AddMember("transform", transform, allocator);
-
-    return msg;
-}
-
-rapidjson::Document create_static_transform(const std::string& parent_frame, const std::string& child_frame, double x, double y, double z, double qx, double qy, double qz, double qw) {
-    rapidjson::Document msg;
-    msg.SetObject();
-    auto& allocator = msg.GetAllocator();
-
-    // Header with timestamp (zero for static transforms)
-    rapidjson::Value header(rapidjson::kObjectType);
-    rapidjson::Value stamp(rapidjson::kObjectType);
-    stamp.AddMember("sec", static_cast<int64_t>(0), allocator);
-    stamp.AddMember("nanosec", static_cast<uint32_t>(0), allocator);
-    header.AddMember("stamp", stamp, allocator);
-    header.AddMember("frame_id", rapidjson::Value(parent_frame.c_str(), allocator), allocator);
-    msg.AddMember("header", header, allocator);
-    msg.AddMember("child_frame_id", rapidjson::Value(child_frame.c_str(), allocator), allocator);
-
-    // Transform: translation and rotation
-    rapidjson::Value transform(rapidjson::kObjectType);
-    
-    // Translation
-    rapidjson::Value translation(rapidjson::kObjectType);
-    translation.AddMember("x", x, allocator);
-    translation.AddMember("y", y, allocator);
-    translation.AddMember("z", z, allocator);
-    transform.AddMember("translation", translation, allocator);
-    
-    // Rotation (quaternion)
-    rapidjson::Value rotation(rapidjson::kObjectType);
-    rotation.AddMember("x", qx, allocator);
-    rotation.AddMember("y", qy, allocator);
-    rotation.AddMember("z", qz, allocator);
-    rotation.AddMember("w", qw, allocator);
-    transform.AddMember("rotation", rotation, allocator);
-    
-    msg.AddMember("transform", transform, allocator);
-
-    return msg;
-}
-
 void publish_static_base_frame() {
     if (!g_tf_broadcaster) {
         return;
@@ -250,13 +116,13 @@ void publish_tf_transforms() {
     auto& allocator = transforms_array.GetAllocator();
 
     // Left end effector transform
-    rapidjson::Document left_tf = create_transform_message(poses.leftEndEffector, "base_link", "left_end_effector");
+    rapidjson::Document left_tf = create_transform(poses.leftEndEffector, "base_link", "left_end_effector");
     rapidjson::Value left_tf_value;
     left_tf_value.CopyFrom(left_tf, allocator);
     transforms_array.PushBack(left_tf_value, allocator);
 
     // Right end effector transform
-    rapidjson::Document right_tf = create_transform_message(poses.rightEndEffector, "base_link", "right_end_effector");
+    rapidjson::Document right_tf = create_transform(poses.rightEndEffector, "base_link", "right_end_effector");
     rapidjson::Value right_tf_value;
     right_tf_value.CopyFrom(right_tf, allocator);
     transforms_array.PushBack(right_tf_value, allocator);
@@ -387,8 +253,12 @@ int main(int argc, char* argv[]) {
     PLOGI << "Created TF broadcaster for end effector poses";
     
     // Publish static transform from map to base_link (needed for RViz2)
+    PLOGI << "Publishing static transform";
     publish_static_base_frame();
-    PLOGI << "Published static transform: map -> base_link";
+
+    // Setup ROS services
+    PLOGI << "Advertising services";
+    setup_get_state_service(ros_bridge, &research_interface);
 
     // Main loop setup
     auto loop_period = std::chrono::microseconds(static_cast<int>(1000000.0 / loop_frequency_hz));
@@ -396,9 +266,28 @@ int main(int argc, char* argv[]) {
     int loop_count = -1;
     auto start_time = std::chrono::steady_clock::now();
     int publishes_per_log = static_cast<int>(loop_frequency_hz / LOG_FREQUENCY_HZ);
+    
+    // Track connection state for re-advertisement
+    bool was_connected = transport.IsConnected();
 
     // Main publishing loop
     while (true) { // TODO: Add a condition to exit the loop
+        // Check for reconnection and re-advertise services if needed
+        bool is_connected = transport.IsConnected();
+        if (is_connected && !was_connected) {
+            // Connection was restored - wait a bit for rosbridge to stabilize
+            PLOGW << "Connection restored, waiting for rosbridge to stabilize...";
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            
+            // Re-publish static transform (Publish() will auto-advertise if needed)
+            publish_static_base_frame();
+            
+            // Re-advertise service (don't create a new one, just re-advertise the existing service)
+            PLOGI << "Re-advertising service...";
+            advertise_get_state_service(ros_bridge, &research_interface);
+        }
+        was_connected = is_connected;
+                
         publish_joint_states();
         publish_tf_transforms();
         loop_count++;
