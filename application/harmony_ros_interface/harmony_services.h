@@ -32,6 +32,8 @@ enum class ArmSide {
 
 // Global service instances
 extern ROSService* g_get_state_service;
+extern ROSService* g_get_state_left_service;
+extern ROSService* g_get_state_right_service;
 
 
 /**
@@ -57,6 +59,22 @@ rapidjson::Document create_get_state_response(ResearchInterface* research_interf
  * @return true if service was successfully advertised, false otherwise
  */
 bool setup_get_state_service(ROSBridge& ros_bridge, ResearchInterface* research_interface);
+
+/**
+ * @brief Setup and advertise the get_state service for left arm
+ * @param ros_bridge Reference to the ROS bridge instance
+ * @param research_interface Pointer to the research interface
+ * @return true if service was successfully advertised, false otherwise
+ */
+bool setup_get_state_left_service(ROSBridge& ros_bridge, ResearchInterface* research_interface);
+
+/**
+ * @brief Setup and advertise the get_state service for right arm
+ * @param ros_bridge Reference to the ROS bridge instance
+ * @param research_interface Pointer to the research interface
+ * @return true if service was successfully advertised, false otherwise
+ */
+bool setup_get_state_right_service(ROSBridge& ros_bridge, ResearchInterface* research_interface);
 
 #endif // HARMONY_SERVICES_H
 

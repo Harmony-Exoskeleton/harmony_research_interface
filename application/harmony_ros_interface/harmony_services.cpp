@@ -51,6 +51,8 @@ static bool shouldProcessRight(ArmSide side) {
 
 // Global service instances
 ROSService* g_get_state_service = nullptr;
+ROSService* g_get_state_left_service = nullptr;
+ROSService* g_get_state_right_service = nullptr;
 
 // Default arm selection state
 ArmSide g_arm_side = ArmSide::both; // default to both arms
@@ -186,6 +188,124 @@ bool setup_get_state_service(ROSBridge& ros_bridge, ResearchInterface* research_
         PLOGI << "Advertised service: /harmony/get_state";
     } else {
         PLOGE << "Failed to advertise service: /harmony/get_state";
+    }
+    return success;
+}
+
+// Helper function to create the left arm get_state service callback
+auto create_get_state_left_callback(ROSBridge& ros_bridge, ResearchInterface* research_interface) {
+    return [&ros_bridge, research_interface](
+        ROSBridgeCallServiceMsg &request, 
+        rapidjson::Document::AllocatorType &allocator) {
+        
+        PLOGI << "Received service request for /harmony/left/get_state";
+        
+        // Create response with left arm joint states and sizes
+        rapidjson::Document response_data = create_get_state_response(research_interface, ArmSide::left);
+        
+        // Create service response message
+        ROSBridgeServiceResponseMsg response(true);
+        response.id_ = request.id_;
+        response.service_ = request.service_;
+        response.result_ = true;
+        
+        // For std_srvs/Trigger response structure:
+        // - success: bool
+        // - message: string
+        // We'll put our JSON data in the message field as a string
+        rapidjson::StringBuffer buffer;
+        rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+        response_data.Accept(writer);
+        std::string json_string = buffer.GetString();
+        
+        // Create response values matching std_srvs/Trigger structure
+        rapidjson::Document response_values;
+        response_values.SetObject();
+        response_values.AddMember("success", true, allocator);
+        response_values.AddMember("message", rapidjson::Value(json_string.c_str(), allocator), allocator);
+        
+        // Copy response data to values_json_
+        response.values_json_.CopyFrom(response_values, allocator);
+        
+        // Send response
+        ros_bridge.SendMessage(response);
+        PLOGI << "Sent service response for /harmony/left/get_state";
+    };
+}
+
+// Helper function to create the right arm get_state service callback
+auto create_get_state_right_callback(ROSBridge& ros_bridge, ResearchInterface* research_interface) {
+    return [&ros_bridge, research_interface](
+        ROSBridgeCallServiceMsg &request, 
+        rapidjson::Document::AllocatorType &allocator) {
+        
+        PLOGI << "Received service request for /harmony/right/get_state";
+        
+        // Create response with right arm joint states and sizes
+        rapidjson::Document response_data = create_get_state_response(research_interface, ArmSide::right);
+        
+        // Create service response message
+        ROSBridgeServiceResponseMsg response(true);
+        response.id_ = request.id_;
+        response.service_ = request.service_;
+        response.result_ = true;
+        
+        // For std_srvs/Trigger response structure:
+        // - success: bool
+        // - message: string
+        // We'll put our JSON data in the message field as a string
+        rapidjson::StringBuffer buffer;
+        rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+        response_data.Accept(writer);
+        std::string json_string = buffer.GetString();
+        
+        // Create response values matching std_srvs/Trigger structure
+        rapidjson::Document response_values;
+        response_values.SetObject();
+        response_values.AddMember("success", true, allocator);
+        response_values.AddMember("message", rapidjson::Value(json_string.c_str(), allocator), allocator);
+        
+        // Copy response data to values_json_
+        response.values_json_.CopyFrom(response_values, allocator);
+        
+        // Send response
+        ros_bridge.SendMessage(response);
+        PLOGI << "Sent service response for /harmony/right/get_state";
+    };
+}
+
+bool setup_get_state_left_service(ROSBridge& ros_bridge, ResearchInterface* research_interface) {
+    // Create service instance (static to persist across calls)
+    static ROSService get_state_left_service(ros_bridge, "/harmony/left/get_state", "std_srvs/Trigger");
+    g_get_state_left_service = &get_state_left_service;
+    
+    // Create service callback
+    auto service_callback = create_get_state_left_callback(ros_bridge, research_interface);
+
+    // Advertise the service (will re-advertise if already advertised)
+    bool success = get_state_left_service.Advertise(service_callback);
+    if (success) {
+        PLOGI << "Advertised service: /harmony/left/get_state";
+    } else {
+        PLOGE << "Failed to advertise service: /harmony/left/get_state";
+    }
+    return success;
+}
+
+bool setup_get_state_right_service(ROSBridge& ros_bridge, ResearchInterface* research_interface) {
+    // Create service instance (static to persist across calls)
+    static ROSService get_state_right_service(ros_bridge, "/harmony/right/get_state", "std_srvs/Trigger");
+    g_get_state_right_service = &get_state_right_service;
+    
+    // Create service callback
+    auto service_callback = create_get_state_right_callback(ros_bridge, research_interface);
+
+    // Advertise the service (will re-advertise if already advertised)
+    bool success = get_state_right_service.Advertise(service_callback);
+    if (success) {
+        PLOGI << "Advertised service: /harmony/right/get_state";
+    } else {
+        PLOGE << "Failed to advertise service: /harmony/right/get_state";
     }
     return success;
 }

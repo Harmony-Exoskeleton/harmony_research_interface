@@ -266,6 +266,8 @@ int main(int argc, char* argv[]) {
     setup_tf_static_base_frame();
     PLOGI << "Setting up services";
     setup_get_state_service(ros_bridge, &research_interface);
+    setup_get_state_left_service(ros_bridge, &research_interface);
+    setup_get_state_right_service(ros_bridge, &research_interface);
 
     // Main loop setup
     auto loop_period = std::chrono::microseconds(static_cast<int>(1000000.0 / loop_frequency_hz));
@@ -291,6 +293,8 @@ int main(int argc, char* argv[]) {
             setup_tf_static_base_frame();
             PLOGI << "Re-setting up services";
             setup_get_state_service(ros_bridge, &research_interface);
+            setup_get_state_left_service(ros_bridge, &research_interface);
+            setup_get_state_right_service(ros_bridge, &research_interface);
         }
         was_connected = is_connected;
                 
