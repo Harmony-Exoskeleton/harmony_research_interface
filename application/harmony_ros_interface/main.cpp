@@ -304,6 +304,12 @@ int main(int argc, char* argv[]) {
     setup_enable_impedance_mode_right_service(ros_bridge, &research_interface);
     setup_enable_torque_mode_left_service(ros_bridge, &research_interface);
     setup_enable_torque_mode_right_service(ros_bridge, &research_interface);
+    setup_enable_gravity_left_service(ros_bridge, &research_interface);
+    setup_enable_gravity_right_service(ros_bridge, &research_interface);
+    setup_enable_shr_left_service(ros_bridge, &research_interface);
+    setup_enable_shr_right_service(ros_bridge, &research_interface);
+    setup_enable_constraints_left_service(ros_bridge, &research_interface);
+    setup_enable_constraints_right_service(ros_bridge, &research_interface);
 
     // Main loop setup
     auto loop_period = std::chrono::microseconds(static_cast<int>(1000000.0 / loop_frequency_hz));
@@ -339,6 +345,12 @@ int main(int argc, char* argv[]) {
             setup_enable_impedance_mode_right_service(ros_bridge, &research_interface);
             setup_enable_torque_mode_left_service(ros_bridge, &research_interface);
             setup_enable_torque_mode_right_service(ros_bridge, &research_interface);
+            setup_enable_gravity_left_service(ros_bridge, &research_interface);
+            setup_enable_gravity_right_service(ros_bridge, &research_interface);
+            setup_enable_shr_left_service(ros_bridge, &research_interface);
+            setup_enable_shr_right_service(ros_bridge, &research_interface);
+            setup_enable_constraints_left_service(ros_bridge, &research_interface);
+            setup_enable_constraints_right_service(ros_bridge, &research_interface);
         }
         was_connected = is_connected;
                 

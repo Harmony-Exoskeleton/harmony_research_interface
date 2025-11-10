@@ -32,6 +32,12 @@ ROSService* g_enable_impedance_mode_left_service = nullptr;
 ROSService* g_enable_impedance_mode_right_service = nullptr;
 ROSService* g_enable_torque_mode_left_service = nullptr;
 ROSService* g_enable_torque_mode_right_service = nullptr;
+ROSService* g_enable_gravity_left_service = nullptr;
+ROSService* g_enable_gravity_right_service = nullptr;
+ROSService* g_enable_shr_left_service = nullptr;
+ROSService* g_enable_shr_right_service = nullptr;
+ROSService* g_enable_constraints_left_service = nullptr;
+ROSService* g_enable_constraints_right_service = nullptr;
 
 // Global enable state variables (start with both disabled)
 bool g_left_arm_enabled = false;
@@ -450,8 +456,15 @@ static bool setArmControlMode(ResearchInterface* research_interface, bool is_lef
     // Set new mode
     switch (mode) {
         case ControlMode::harmony:
+            // Activate harmony mode by removing override
             controller->removeOverride();
             current_mode = ControlMode::harmony;
+            
+            // Verify mode is set to harmony
+            if (controller->getMode() != harmony::ArmController::Mode::harmony) {
+                PLOGE << (is_left ? "Left" : "Right") << " arm failed to set mode to harmony";
+                return false;
+            }
             PLOGI << (is_left ? "Left" : "Right") << " arm set to harmony mode";
             break;
 
@@ -470,9 +483,16 @@ static bool setArmControlMode(ResearchInterface* research_interface, bool is_lef
                 };
             }
             
+            // Activate jointsOverride mode by setting override
             harmony::ArmJointsOverride override(overrides);
             controller->setJointsOverride(override);
             current_mode = ControlMode::impedance;
+            
+            // Verify mode is set to jointsOverride
+            if (controller->getMode() != harmony::ArmController::Mode::jointsOverride) {
+                PLOGE << (is_left ? "Left" : "Right") << " arm failed to set mode to jointsOverride for impedance";
+                return false;
+            }
             PLOGI << (is_left ? "Left" : "Right") << " arm set to impedance mode (control values via topics)";
             break;
         }
@@ -488,9 +508,16 @@ static bool setArmControlMode(ResearchInterface* research_interface, bool is_lef
                 };
             }
             
+            // Activate jointsOverride mode by setting override
             harmony::ArmJointsOverride override(overrides);
             controller->setJointsOverride(override);
             current_mode = ControlMode::torque;
+            
+            // Verify mode is set to jointsOverride
+            if (controller->getMode() != harmony::ArmController::Mode::jointsOverride) {
+                PLOGE << (is_left ? "Left" : "Right") << " arm failed to set mode to jointsOverride for torque";
+                return false;
+            }
             PLOGI << (is_left ? "Left" : "Right") << " arm set to torque mode (control values via topics)";
             break;
         }
@@ -663,6 +690,329 @@ bool setup_enable_torque_mode_right_service(ROSBridge& ros_bridge, ResearchInter
         PLOGI << "Advertised service: /harmony/right/enable_torque_mode";
     } else {
         PLOGE << "Failed to advertise service: /harmony/right/enable_torque_mode";
+    }
+    return success;
+}
+
+// Helper function to update gravity compensation flag for an arm
+static bool setArmGravity(ResearchInterface* research_interface, bool is_left, bool enable) {
+    if (!research_interface) {
+        PLOGE << "Research interface is null";
+        return false;
+    }
+
+    auto controller = is_left ? research_interface->makeLeftArmController() : research_interface->makeRightArmController();
+    if (!controller->init()) {
+        PLOGE << "Failed to initialize " << (is_left ? "left" : "right") << " arm controller";
+        return false;
+    }
+
+    // Check if we're in jointsOverride mode (impedance or torque)
+    if (controller->getMode() != harmony::ArmController::Mode::jointsOverride) {
+        PLOGE << (is_left ? "Left" : "Right") << " arm must be in impedance or torque mode to set gravity compensation";
+        return false;
+    }
+
+    // Get current override state
+    auto current_override = controller->getArmJointsOverride();
+    if (!current_override) {
+        PLOGE << "Failed to get current override state - controller is not in jointsOverride mode";
+        return false;
+    }
+
+    // Get current overrides and flags
+    auto overrides = current_override->getOrderedOverrides();
+    bool constraints_enabled = current_override->areShoulderConstraintsEnabled();
+    bool gravity_disabled = current_override->isGravityTorqueDisabled();
+    bool shr_disabled = current_override->isSHRTorqueDisabled();
+
+    // Update gravity flag: enable means gravityTorqueDisabled = false
+    bool new_gravity_disabled = !enable;
+    harmony::ArmJointsOverride new_override(overrides, constraints_enabled, new_gravity_disabled, shr_disabled);
+    controller->setJointsOverride(new_override);
+
+    PLOGI << (is_left ? "Left" : "Right") << " arm gravity compensation " << (enable ? "enabled" : "disabled");
+    return true;
+}
+
+// Helper function to update SHR flag for an arm
+static bool setArmSHR(ResearchInterface* research_interface, bool is_left, bool enable) {
+    if (!research_interface) {
+        PLOGE << "Research interface is null";
+        return false;
+    }
+
+    auto controller = is_left ? research_interface->makeLeftArmController() : research_interface->makeRightArmController();
+    if (!controller->init()) {
+        PLOGE << "Failed to initialize " << (is_left ? "left" : "right") << " arm controller";
+        return false;
+    }
+
+    // Check if we're in jointsOverride mode (impedance or torque)
+    if (controller->getMode() != harmony::ArmController::Mode::jointsOverride) {
+        PLOGE << (is_left ? "Left" : "Right") << " arm must be in impedance or torque mode to set SHR";
+        return false;
+    }
+
+    // Get current override state
+    auto current_override = controller->getArmJointsOverride();
+    if (!current_override) {
+        PLOGE << "Failed to get current override state - controller is not in jointsOverride mode";
+        return false;
+    }
+
+    // Get current overrides and flags
+    auto overrides = current_override->getOrderedOverrides();
+    bool constraints_enabled = current_override->areShoulderConstraintsEnabled();
+    bool gravity_disabled = current_override->isGravityTorqueDisabled();
+    bool shr_disabled = current_override->isSHRTorqueDisabled();
+
+    // Update SHR flag: enable means SHRTorqueDisabled = false
+    bool new_shr_disabled = !enable;
+    harmony::ArmJointsOverride new_override(overrides, constraints_enabled, gravity_disabled, new_shr_disabled);
+    controller->setJointsOverride(new_override);
+
+    PLOGI << (is_left ? "Left" : "Right") << " arm SHR " << (enable ? "enabled" : "disabled");
+    return true;
+}
+
+// Helper function to update constraints flag for an arm
+static bool setArmConstraints(ResearchInterface* research_interface, bool is_left, bool enable) {
+    if (!research_interface) {
+        PLOGE << "Research interface is null";
+        return false;
+    }
+
+    auto controller = is_left ? research_interface->makeLeftArmController() : research_interface->makeRightArmController();
+    if (!controller->init()) {
+        PLOGE << "Failed to initialize " << (is_left ? "left" : "right") << " arm controller";
+        return false;
+    }
+
+    // Check if we're in jointsOverride mode (impedance or torque)
+    if (controller->getMode() != harmony::ArmController::Mode::jointsOverride) {
+        PLOGE << (is_left ? "Left" : "Right") << " arm must be in impedance or torque mode to set constraints";
+        return false;
+    }
+
+    // Get current override state
+    auto current_override = controller->getArmJointsOverride();
+    if (!current_override) {
+        PLOGE << "Failed to get current override state - controller is not in jointsOverride mode";
+        return false;
+    }
+
+    // Get current overrides and flags
+    auto overrides = current_override->getOrderedOverrides();
+    bool constraints_enabled = current_override->areShoulderConstraintsEnabled();
+    bool gravity_disabled = current_override->isGravityTorqueDisabled();
+    bool shr_disabled = current_override->isSHRTorqueDisabled();
+
+    // Update constraints flag
+    harmony::ArmJointsOverride new_override(overrides, enable, gravity_disabled, shr_disabled);
+    controller->setJointsOverride(new_override);
+
+    PLOGI << (is_left ? "Left" : "Right") << " arm constraints " << (enable ? "enabled" : "disabled");
+    return true;
+}
+
+// Helper function to create enable_gravity callback
+auto create_enable_gravity_callback(ROSBridge& ros_bridge, ResearchInterface* research_interface, bool is_left) {
+    return [&ros_bridge, research_interface, is_left](
+        ROSBridgeCallServiceMsg &request, 
+        rapidjson::Document::AllocatorType &allocator) {
+        
+        std::string arm_name = is_left ? "left" : "right";
+        PLOGI << "Received service request for /harmony/" << arm_name << "/enable_gravity";
+        
+        // Parse request to get enable/disable flag
+        // std_srvs/SetBool has a "data" field (boolean) in the request
+        bool enable = true;
+        if (!request.args_json_.IsNull() && request.args_json_.IsObject()) {
+            if (request.args_json_.HasMember("data") && request.args_json_["data"].IsBool()) {
+                enable = request.args_json_["data"].GetBool();
+            }
+        }
+        
+        bool success = setArmGravity(research_interface, is_left, enable);
+        
+        ROSBridgeServiceResponseMsg response(true);
+        response.id_ = request.id_;
+        response.service_ = request.service_;
+        response.result_ = success;
+        
+        rapidjson::Document response_values;
+        response_values.SetObject();
+        response_values.AddMember("success", success, allocator);
+        std::string message = success ? 
+            (arm_name + " arm gravity compensation " + (enable ? "enabled" : "disabled")) : 
+            ("Failed to " + std::string(enable ? "enable" : "disable") + " gravity compensation for " + arm_name + " arm");
+        response_values.AddMember("message", rapidjson::Value(message.c_str(), allocator), allocator);
+        
+        response.values_json_.CopyFrom(response_values, allocator);
+        ros_bridge.SendMessage(response);
+        PLOGI << "Sent service response for /harmony/" << arm_name << "/enable_gravity";
+    };
+}
+
+// Helper function to create enable_shr callback
+auto create_enable_shr_callback(ROSBridge& ros_bridge, ResearchInterface* research_interface, bool is_left) {
+    return [&ros_bridge, research_interface, is_left](
+        ROSBridgeCallServiceMsg &request, 
+        rapidjson::Document::AllocatorType &allocator) {
+        
+        std::string arm_name = is_left ? "left" : "right";
+        PLOGI << "Received service request for /harmony/" << arm_name << "/enable_shr";
+        
+        // Parse request to get enable/disable flag
+        // std_srvs/SetBool has a "data" field (boolean) in the request
+        bool enable = true;
+        if (!request.args_json_.IsNull() && request.args_json_.IsObject()) {
+            if (request.args_json_.HasMember("data") && request.args_json_["data"].IsBool()) {
+                enable = request.args_json_["data"].GetBool();
+            }
+        }
+        
+        bool success = setArmSHR(research_interface, is_left, enable);
+        
+        ROSBridgeServiceResponseMsg response(true);
+        response.id_ = request.id_;
+        response.service_ = request.service_;
+        response.result_ = success;
+        
+        rapidjson::Document response_values;
+        response_values.SetObject();
+        response_values.AddMember("success", success, allocator);
+        std::string message = success ? 
+            (arm_name + " arm SHR " + (enable ? "enabled" : "disabled")) : 
+            ("Failed to " + std::string(enable ? "enable" : "disable") + " SHR for " + arm_name + " arm");
+        response_values.AddMember("message", rapidjson::Value(message.c_str(), allocator), allocator);
+        
+        response.values_json_.CopyFrom(response_values, allocator);
+        ros_bridge.SendMessage(response);
+        PLOGI << "Sent service response for /harmony/" << arm_name << "/enable_shr";
+    };
+}
+
+// Helper function to create enable_constraints callback
+auto create_enable_constraints_callback(ROSBridge& ros_bridge, ResearchInterface* research_interface, bool is_left) {
+    return [&ros_bridge, research_interface, is_left](
+        ROSBridgeCallServiceMsg &request, 
+        rapidjson::Document::AllocatorType &allocator) {
+        
+        std::string arm_name = is_left ? "left" : "right";
+        PLOGI << "Received service request for /harmony/" << arm_name << "/enable_constraints";
+        
+        // Parse request to get enable/disable flag
+        // std_srvs/SetBool has a "data" field (boolean) in the request
+        bool enable = true;
+        if (!request.args_json_.IsNull() && request.args_json_.IsObject()) {
+            if (request.args_json_.HasMember("data") && request.args_json_["data"].IsBool()) {
+                enable = request.args_json_["data"].GetBool();
+            }
+        }
+        
+        bool success = setArmConstraints(research_interface, is_left, enable);
+        
+        ROSBridgeServiceResponseMsg response(true);
+        response.id_ = request.id_;
+        response.service_ = request.service_;
+        response.result_ = success;
+        
+        rapidjson::Document response_values;
+        response_values.SetObject();
+        response_values.AddMember("success", success, allocator);
+        std::string message = success ? 
+            (arm_name + " arm constraints " + (enable ? "enabled" : "disabled")) : 
+            ("Failed to " + std::string(enable ? "enable" : "disable") + " constraints for " + arm_name + " arm");
+        response_values.AddMember("message", rapidjson::Value(message.c_str(), allocator), allocator);
+        
+        response.values_json_.CopyFrom(response_values, allocator);
+        ros_bridge.SendMessage(response);
+        PLOGI << "Sent service response for /harmony/" << arm_name << "/enable_constraints";
+    };
+}
+
+bool setup_enable_gravity_left_service(ROSBridge& ros_bridge, ResearchInterface* research_interface) {
+    static ROSService service(ros_bridge, "/harmony/left/enable_gravity", "std_srvs/SetBool");
+    g_enable_gravity_left_service = &service;
+    
+    auto callback = create_enable_gravity_callback(ros_bridge, research_interface, true);
+    bool success = service.Advertise(callback);
+    if (success) {
+        PLOGI << "Advertised service: /harmony/left/enable_gravity";
+    } else {
+        PLOGE << "Failed to advertise service: /harmony/left/enable_gravity";
+    }
+    return success;
+}
+
+bool setup_enable_gravity_right_service(ROSBridge& ros_bridge, ResearchInterface* research_interface) {
+    static ROSService service(ros_bridge, "/harmony/right/enable_gravity", "std_srvs/SetBool");
+    g_enable_gravity_right_service = &service;
+    
+    auto callback = create_enable_gravity_callback(ros_bridge, research_interface, false);
+    bool success = service.Advertise(callback);
+    if (success) {
+        PLOGI << "Advertised service: /harmony/right/enable_gravity";
+    } else {
+        PLOGE << "Failed to advertise service: /harmony/right/enable_gravity";
+    }
+    return success;
+}
+
+bool setup_enable_shr_left_service(ROSBridge& ros_bridge, ResearchInterface* research_interface) {
+    static ROSService service(ros_bridge, "/harmony/left/enable_shr", "std_srvs/SetBool");
+    g_enable_shr_left_service = &service;
+    
+    auto callback = create_enable_shr_callback(ros_bridge, research_interface, true);
+    bool success = service.Advertise(callback);
+    if (success) {
+        PLOGI << "Advertised service: /harmony/left/enable_shr";
+    } else {
+        PLOGE << "Failed to advertise service: /harmony/left/enable_shr";
+    }
+    return success;
+}
+
+bool setup_enable_shr_right_service(ROSBridge& ros_bridge, ResearchInterface* research_interface) {
+    static ROSService service(ros_bridge, "/harmony/right/enable_shr", "std_srvs/SetBool");
+    g_enable_shr_right_service = &service;
+    
+    auto callback = create_enable_shr_callback(ros_bridge, research_interface, false);
+    bool success = service.Advertise(callback);
+    if (success) {
+        PLOGI << "Advertised service: /harmony/right/enable_shr";
+    } else {
+        PLOGE << "Failed to advertise service: /harmony/right/enable_shr";
+    }
+    return success;
+}
+
+bool setup_enable_constraints_left_service(ROSBridge& ros_bridge, ResearchInterface* research_interface) {
+    static ROSService service(ros_bridge, "/harmony/left/enable_constraints", "std_srvs/SetBool");
+    g_enable_constraints_left_service = &service;
+    
+    auto callback = create_enable_constraints_callback(ros_bridge, research_interface, true);
+    bool success = service.Advertise(callback);
+    if (success) {
+        PLOGI << "Advertised service: /harmony/left/enable_constraints";
+    } else {
+        PLOGE << "Failed to advertise service: /harmony/left/enable_constraints";
+    }
+    return success;
+}
+
+bool setup_enable_constraints_right_service(ROSBridge& ros_bridge, ResearchInterface* research_interface) {
+    static ROSService service(ros_bridge, "/harmony/right/enable_constraints", "std_srvs/SetBool");
+    g_enable_constraints_right_service = &service;
+    
+    auto callback = create_enable_constraints_callback(ros_bridge, research_interface, false);
+    bool success = service.Advertise(callback);
+    if (success) {
+        PLOGI << "Advertised service: /harmony/right/enable_constraints";
+    } else {
+        PLOGE << "Failed to advertise service: /harmony/right/enable_constraints";
     }
     return success;
 }

@@ -42,6 +42,12 @@ extern ROSService* g_enable_impedance_mode_left_service;
 extern ROSService* g_enable_impedance_mode_right_service;
 extern ROSService* g_enable_torque_mode_left_service;
 extern ROSService* g_enable_torque_mode_right_service;
+extern ROSService* g_enable_gravity_left_service;
+extern ROSService* g_enable_gravity_right_service;
+extern ROSService* g_enable_shr_left_service;
+extern ROSService* g_enable_shr_right_service;
+extern ROSService* g_enable_constraints_left_service;
+extern ROSService* g_enable_constraints_right_service;
 
 // Global enable state variables
 extern bool g_left_arm_enabled;
@@ -156,6 +162,54 @@ bool setup_enable_torque_mode_left_service(ROSBridge& ros_bridge, ResearchInterf
  * @return true if service was successfully advertised, false otherwise
  */
 bool setup_enable_torque_mode_right_service(ROSBridge& ros_bridge, ResearchInterface* research_interface);
+
+/**
+ * @brief Setup and advertise the enable_gravity service for left arm
+ * @param ros_bridge Reference to the ROS bridge instance
+ * @param research_interface Pointer to the research interface
+ * @return true if service was successfully advertised, false otherwise
+ */
+bool setup_enable_gravity_left_service(ROSBridge& ros_bridge, ResearchInterface* research_interface);
+
+/**
+ * @brief Setup and advertise the enable_gravity service for right arm
+ * @param ros_bridge Reference to the ROS bridge instance
+ * @param research_interface Pointer to the research interface
+ * @return true if service was successfully advertised, false otherwise
+ */
+bool setup_enable_gravity_right_service(ROSBridge& ros_bridge, ResearchInterface* research_interface);
+
+/**
+ * @brief Setup and advertise the enable_shr service for left arm
+ * @param ros_bridge Reference to the ROS bridge instance
+ * @param research_interface Pointer to the research interface
+ * @return true if service was successfully advertised, false otherwise
+ */
+bool setup_enable_shr_left_service(ROSBridge& ros_bridge, ResearchInterface* research_interface);
+
+/**
+ * @brief Setup and advertise the enable_shr service for right arm
+ * @param ros_bridge Reference to the ROS bridge instance
+ * @param research_interface Pointer to the research interface
+ * @return true if service was successfully advertised, false otherwise
+ */
+bool setup_enable_shr_right_service(ROSBridge& ros_bridge, ResearchInterface* research_interface);
+
+/**
+ * @brief Setup and advertise the enable_constraints service for left arm
+ * @param ros_bridge Reference to the ROS bridge instance
+ * @param research_interface Pointer to the research interface
+ * @return true if service was successfully advertised, false otherwise
+ */
+bool setup_enable_constraints_left_service(ROSBridge& ros_bridge, ResearchInterface* research_interface);
+
+/**
+ * @brief Setup and advertise the enable_constraints service for right arm
+ * @param ros_bridge Reference to the ROS bridge instance
+ * @param research_interface Pointer to the research interface
+ * @return true if service was successfully advertised, false otherwise
+ */
+bool setup_enable_constraints_right_service(ROSBridge& ros_bridge, ResearchInterface* research_interface);
 
 #endif // HARMONY_SERVICES_H
 
