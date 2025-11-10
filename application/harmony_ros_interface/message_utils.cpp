@@ -144,3 +144,19 @@ rapidjson::Document create_static_transform(const std::string& parent_frame, con
     return msg;
 }
 
+rapidjson::Document create_sizes_message(const std::array<double, armSizeCount>& sizes) {
+    rapidjson::Document msg;
+    msg.SetObject();
+    auto& allocator = msg.GetAllocator();
+
+    // std_msgs/Float64MultiArray structure
+    // Create data array
+    rapidjson::Value data(rapidjson::kArrayType);
+    for (const auto& size : sizes) {
+        data.PushBack(size, allocator);
+    }
+    msg.AddMember("data", data, allocator);
+
+    return msg;
+}
+

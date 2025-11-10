@@ -28,8 +28,7 @@
 #include <chrono>
 #include <string>
 #include <cstdlib>
-#include <iomanip>
-#include <iostream>
+
 
 using namespace std;
 using namespace rosbridge2cpp;
@@ -61,6 +60,8 @@ constexpr double BASE_LINK_ORIENTATION_QW = 1.0;
 static ResearchInterface* g_research_interface = nullptr;
 static ROSTopic* g_left_joint_state_pub = nullptr;
 static ROSTopic* g_right_joint_state_pub = nullptr;
+static ROSTopic* g_left_sizes_pub = nullptr;
+static ROSTopic* g_right_sizes_pub = nullptr;
 static ROSTFBroadcaster* g_tf_broadcaster = nullptr;
 
 /******************************************************************************************
@@ -156,6 +157,24 @@ void publish_joint_states() {
     // Create and publish right arm joint states
     rapidjson::Document right_msg = create_joint_state_message(right_states);
     g_right_joint_state_pub->Publish(right_msg);
+}
+
+void publish_sizes() {
+    if (!g_research_interface || !g_left_sizes_pub || !g_right_sizes_pub) {
+        return;
+    }
+
+    auto sizes = g_research_interface->sizes();
+    auto left_sizes = sizes.leftArm.getOrderedSizes_mm();
+    auto right_sizes = sizes.rightArm.getOrderedSizes_mm();
+
+    // Create and publish left arm sizes
+    rapidjson::Document left_msg = create_sizes_message(left_sizes);
+    g_left_sizes_pub->Publish(left_msg);
+
+    // Create and publish right arm sizes
+    rapidjson::Document right_msg = create_sizes_message(right_sizes);
+    g_right_sizes_pub->Publish(right_msg);
 }
 
 /******************************************************************************************
@@ -256,6 +275,15 @@ int main(int argc, char* argv[]) {
     PLOGI << "  Left arm:  /harmony/left/joint_states";
     PLOGI << "  Right arm: /harmony/right/joint_states";
 
+    // Create ROS topics for sizes
+    ROSTopic left_sizes_pub(ros_bridge, "/harmony/left/sizes", "std_msgs/Float64MultiArray");
+    ROSTopic right_sizes_pub(ros_bridge, "/harmony/right/sizes", "std_msgs/Float64MultiArray");
+    g_left_sizes_pub = &left_sizes_pub;
+    g_right_sizes_pub = &right_sizes_pub;
+    PLOGI << "Created size publishers:";
+    PLOGI << "  Left arm:  /harmony/left/sizes";
+    PLOGI << "  Right arm: /harmony/right/sizes";
+
     // Create TF broadcaster for end effector poses
     ROSTFBroadcaster tf_broadcaster(ros_bridge);
     g_tf_broadcaster = &tf_broadcaster;
@@ -303,6 +331,7 @@ int main(int argc, char* argv[]) {
         was_connected = is_connected;
                 
         publish_joint_states();
+        publish_sizes();
         publish_tf_transforms();
         loop_count++;
 

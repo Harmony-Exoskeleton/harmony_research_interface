@@ -42,5 +42,12 @@ rapidjson::Document create_transform(const Pose& pose, const std::string& parent
 rapidjson::Document create_static_transform(const std::string& parent_frame, const std::string& child_frame, 
                                             double x, double y, double z, double qx, double qy, double qz, double qw);
 
+/**
+ * @brief Create a std_msgs/Float64MultiArray message from arm sizes
+ * @param sizes Array of arm sizes in mm
+ * @return JSON document representing the Float64MultiArray message
+ */
+rapidjson::Document create_sizes_message(const std::array<double, armSizeCount>& sizes);
+
 #endif // MESSAGE_UTILS_H
 

@@ -8,8 +8,6 @@
 #include "plog/Log.h"
 #include "joint_states.h"
 #include "sizes.h"
-#include "arm_controller.h"
-#include "overrides.h"
 #include "messages/rosbridge_call_service_msg.h"
 #include "messages/rosbridge_service_response_msg.h"
 #include "types.h"
@@ -18,7 +16,6 @@
 
 #include <array>
 #include <string>
-#include <memory>
 
 using namespace rosbridge2cpp;
 using namespace harmony;
