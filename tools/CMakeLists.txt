@@ -21,6 +21,10 @@ add_executable(stub_harmony stub_harmony.cpp)
 target_link_libraries(stub_harmony PRIVATE harmony_research)
 install(TARGETS stub_harmony DESTINATION bin/tools)
 
+add_executable(reset_shared_memory reset_shared_memory.cpp)
+target_link_libraries(reset_shared_memory PRIVATE harmony_research)
+install(TARGETS reset_shared_memory DESTINATION bin/tools)
+
 add_executable(value_printer value_printer.cpp)
 target_link_libraries(value_printer PRIVATE harmony_research eigen)
 install(TARGETS value_printer DESTINATION bin/tools)

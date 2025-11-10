@@ -48,6 +48,7 @@ extern ROSService* g_enable_shr_left_service;
 extern ROSService* g_enable_shr_right_service;
 extern ROSService* g_enable_constraints_left_service;
 extern ROSService* g_enable_constraints_right_service;
+extern ROSService* g_reset_shared_memory_service;
 
 // Global enable state variables
 extern bool g_left_arm_enabled;
@@ -210,6 +211,13 @@ bool setup_enable_constraints_left_service(ROSBridge& ros_bridge, ResearchInterf
  * @return true if service was successfully advertised, false otherwise
  */
 bool setup_enable_constraints_right_service(ROSBridge& ros_bridge, ResearchInterface* research_interface);
+
+/**
+ * @brief Setup and advertise the reset_shared_memory service
+ * @param ros_bridge Reference to the ROS bridge instance
+ * @return true if service was successfully advertised, false otherwise
+ */
+bool setup_reset_shared_memory_service(ROSBridge& ros_bridge);
 
 #endif // HARMONY_SERVICES_H
 

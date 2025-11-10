@@ -8,6 +8,9 @@
 #include "plog/Log.h"
 #include "joint_states.h"
 #include "sizes.h"
+#include "shared_memory.h"
+#include "shared_memory_manager.h"
+#include "arm_controller.h"
 #include "messages/rosbridge_call_service_msg.h"
 #include "messages/rosbridge_service_response_msg.h"
 #include "types.h"
@@ -16,6 +19,7 @@
 
 #include <array>
 #include <string>
+#include <cstring>
 
 using namespace rosbridge2cpp;
 using namespace harmony;
@@ -38,6 +42,7 @@ ROSService* g_enable_shr_left_service = nullptr;
 ROSService* g_enable_shr_right_service = nullptr;
 ROSService* g_enable_constraints_left_service = nullptr;
 ROSService* g_enable_constraints_right_service = nullptr;
+ROSService* g_reset_shared_memory_service = nullptr;
 
 // Global enable state variables (start with both disabled)
 bool g_left_arm_enabled = false;
@@ -1013,6 +1018,95 @@ bool setup_enable_constraints_right_service(ROSBridge& ros_bridge, ResearchInter
         PLOGI << "Advertised service: /harmony/right/enable_constraints";
     } else {
         PLOGE << "Failed to advertise service: /harmony/right/enable_constraints";
+    }
+    return success;
+}
+
+// Helper function to reset shared memory
+static bool resetSharedMemory() {
+    // Initialize shared memory managers (as non-owners so we don't destroy them)
+    harmony::SharedMemoryManager<harmony::DataFromHarmony> harmonyStateManager(harmony::dataFromHarmonyMemId, false);
+    harmony::SharedMemoryManager<harmony::DataToHarmony> harmonyCommandManager(harmony::dataToHarmonyMemId, false);
+    harmony::SharedMemoryManager<harmony::ArmControllerState> leftControllerStateManager(
+        harmony::leftArmControllerMemId, false);
+    harmony::SharedMemoryManager<harmony::ArmControllerState> rightControllerStateManager(
+        harmony::rightArmControllerMemId, false);
+
+    // Initialize all managers
+    bool success = harmonyStateManager.init() && 
+                   harmonyCommandManager.init() && 
+                   leftControllerStateManager.init() && 
+                   rightControllerStateManager.init();
+
+    if (!success) {
+        PLOGE << "Failed to initialize shared memory managers for reset";
+        return false;
+    }
+
+    // Reset DataFromHarmony - zero out all data
+    std::memset(harmonyStateManager.data, 0, sizeof(harmony::DataFromHarmony));
+
+    // Reset DataToHarmony - zero out all data
+    std::memset(harmonyCommandManager.data, 0, sizeof(harmony::DataToHarmony));
+
+    // Reset left ArmControllerState to defaults
+    harmony::ArmControllerState defaultControllerState;
+    defaultControllerState.mode = harmony::ArmController::Mode::harmony;
+    defaultControllerState.shoulderConstraintsEnabled = true;
+    defaultControllerState.gravityTorqueDisabled = false;
+    defaultControllerState.SHRTorqueDisabled = false;
+    // Zero out joint overrides
+    std::memset(defaultControllerState.jointsOverride, 0, 
+               sizeof(harmony::JointOverride) * harmony::armJointCount);
+    
+    *leftControllerStateManager.data = defaultControllerState;
+
+    // Reset right ArmControllerState to defaults
+    *rightControllerStateManager.data = defaultControllerState;
+
+    PLOGI << "Shared memory reset complete";
+    return true;
+}
+
+// Helper function to create reset_shared_memory callback
+auto create_reset_shared_memory_callback(ROSBridge& ros_bridge) {
+    return [&ros_bridge](
+        ROSBridgeCallServiceMsg &request, 
+        rapidjson::Document::AllocatorType &allocator) {
+        
+        PLOGI << "Received service request for /harmony/reset_shared_memory";
+        
+        bool success = resetSharedMemory();
+        
+        ROSBridgeServiceResponseMsg response(true);
+        response.id_ = request.id_;
+        response.service_ = request.service_;
+        response.result_ = success;
+        
+        rapidjson::Document response_values;
+        response_values.SetObject();
+        response_values.AddMember("success", success, allocator);
+        std::string message = success ? 
+            "Shared memory reset successfully" : 
+            "Failed to reset shared memory";
+        response_values.AddMember("message", rapidjson::Value(message.c_str(), allocator), allocator);
+        
+        response.values_json_.CopyFrom(response_values, allocator);
+        ros_bridge.SendMessage(response);
+        PLOGI << "Sent service response for /harmony/reset_shared_memory";
+    };
+}
+
+bool setup_reset_shared_memory_service(ROSBridge& ros_bridge) {
+    static ROSService service(ros_bridge, "/harmony/reset_shared_memory", "std_srvs/Trigger");
+    g_reset_shared_memory_service = &service;
+    
+    auto callback = create_reset_shared_memory_callback(ros_bridge);
+    bool success = service.Advertise(callback);
+    if (success) {
+        PLOGI << "Advertised service: /harmony/reset_shared_memory";
+    } else {
+        PLOGE << "Failed to advertise service: /harmony/reset_shared_memory";
     }
     return success;
 }
