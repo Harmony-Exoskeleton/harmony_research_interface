@@ -78,3 +78,5 @@ log
 .cache
 .vscode
 
+# Cursor generated files
+*plan.md
