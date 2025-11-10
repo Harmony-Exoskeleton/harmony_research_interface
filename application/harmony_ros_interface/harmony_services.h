@@ -23,32 +23,40 @@ namespace harmony {
 using namespace rosbridge2cpp;
 using namespace harmony;
 
-// Global service instance
+// Arm selection enum
+enum class ArmSide {
+    left,
+    right,
+    both
+};
+
+// Global service instances
 extern ROSService* g_get_state_service;
+
+
+/**
+ * @brief Create a callback function for the get_state service
+ * @param ros_bridge Reference to the ROS bridge instance
+ * @param research_interface Pointer to the research interface
+ * @return Service callback function
+ */
+auto create_get_state_callback(ROSBridge& ros_bridge, ResearchInterface* research_interface);
 
 /**
  * @brief Create a response message for the get_state service
  * @param research_interface Pointer to the research interface
- * @param arm_selection "left", "right", or "both" (default: "both")
+ * @param arm_side ArmSide enum (left, right, or both)
  * @return JSON document containing joint states and sizes for the requested arm(s)
  */
-rapidjson::Document create_get_state_response(ResearchInterface* research_interface, const std::string& arm_selection = "both");
+rapidjson::Document create_get_state_response(ResearchInterface* research_interface, ArmSide arm_side);
 
 /**
- * @brief Setup and advertise the get_state service
+ * @brief Setup and advertise the get_state service (handles both initial setup and re-advertisement)
  * @param ros_bridge Reference to the ROS bridge instance
  * @param research_interface Pointer to the research interface
  * @return true if service was successfully advertised, false otherwise
  */
 bool setup_get_state_service(ROSBridge& ros_bridge, ResearchInterface* research_interface);
-
-/**
- * @brief Advertise the get_state service (useful after reconnection)
- * @param ros_bridge Reference to the ROS bridge instance
- * @param research_interface Pointer to the research interface
- * @return true if service was successfully re-advertised, false otherwise
- */
-bool advertise_get_state_service(ROSBridge& ros_bridge, ResearchInterface* research_interface);
 
 #endif // HARMONY_SERVICES_H
 

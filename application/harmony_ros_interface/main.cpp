@@ -80,8 +80,17 @@ void connection_error_handler(TransportError err) {
  * ROS PUBLISHING
  *****************************************************************************************/
 
-void publish_static_base_frame() {
+void setup_tf_static_base_frame() {
     if (!g_tf_broadcaster) {
+        return;
+    }
+
+    // Unadvertise first to force re-advertisement (handles stale state after reconnection)
+    bool success = g_tf_broadcaster->AdvertiseStaticTopic();
+    if (success) {
+        PLOGI << "Advertised static topic: /tf_static";
+    } else {
+        PLOGE << "Failed to advertise static topic: /tf_static";
         return;
     }
 
@@ -99,7 +108,7 @@ void publish_static_base_frame() {
     tf_value.CopyFrom(static_transform, allocator);
     transforms_array.PushBack(tf_value, allocator);
     
-    // Publish static transform (only needs to be done once)
+    // Publish static transform
     g_tf_broadcaster->SendStaticTransforms(transforms_array);
 }
 
@@ -253,11 +262,9 @@ int main(int argc, char* argv[]) {
     PLOGI << "Created TF broadcaster for end effector poses";
     
     // Publish static transform from map to base_link (needed for RViz2)
-    PLOGI << "Publishing static transform";
-    publish_static_base_frame();
-
-    // Setup ROS services
-    PLOGI << "Advertising services";
+    PLOGI << "Setting up static transforms";
+    setup_tf_static_base_frame();
+    PLOGI << "Setting up services";
     setup_get_state_service(ros_bridge, &research_interface);
 
     // Main loop setup
@@ -279,12 +286,11 @@ int main(int argc, char* argv[]) {
             PLOGW << "Connection restored, waiting for rosbridge to stabilize...";
             std::this_thread::sleep_for(std::chrono::milliseconds(500));
             
-            // Re-publish static transform (Publish() will auto-advertise if needed)
-            publish_static_base_frame();
-            
-            // Re-advertise service (don't create a new one, just re-advertise the existing service)
-            PLOGI << "Re-advertising service...";
-            advertise_get_state_service(ros_bridge, &research_interface);
+            // Publish static transform from map to base_link (needed for RViz2)
+            PLOGI << "Re-setting up static transforms";
+            setup_tf_static_base_frame();
+            PLOGI << "Re-setting up services";
+            setup_get_state_service(ros_bridge, &research_interface);
         }
         was_connected = is_connected;
                 
@@ -301,18 +307,15 @@ int main(int argc, char* argv[]) {
                     current_time - start_time).count();
                 
                 double actual_hz = (time_since_start > 0) ? (loop_count * 1e6 / time_since_start) : 0.0;
-
-                PLOGI << "Last published (count: " << loop_count << ", Hz: " 
-                      << std::fixed << std::setprecision(2) << actual_hz << ")";
                 
                 auto last_left_msg = g_left_joint_state_pub->GetLastPublishedMessage();
                 auto last_right_msg = g_right_joint_state_pub->GetLastPublishedMessage();
 
                 if (!last_left_msg.empty()) {
-                    PLOGI << "Last published left arm message: " << last_left_msg;
+                    PLOGD << "Last published left arm message: " << last_left_msg;
                 }
                 if (!last_right_msg.empty()) {
-                    PLOGI << "Last published right arm message: " << last_right_msg;
+                    PLOGD << "Last published right arm message: " << last_right_msg;
                 }
             }
         }

@@ -8,21 +8,54 @@
 #include "plog/Log.h"
 #include "joint_states.h"
 #include "sizes.h"
+#include "arm_controller.h"
+#include "overrides.h"
 #include "messages/rosbridge_call_service_msg.h"
 #include "messages/rosbridge_service_response_msg.h"
+#include "types.h"
 #include "rapidjson/writer.h"
 #include "rapidjson/stringbuffer.h"
 
 #include <array>
 #include <string>
+#include <memory>
 
 using namespace rosbridge2cpp;
 using namespace harmony;
 
-// Global service instance
+// Helper functions to convert between enum and string
+static std::string armSideToString(ArmSide selection) {
+    switch (selection) {
+        case ArmSide::left: return "left";
+        case ArmSide::right: return "right";
+        case ArmSide::both: return "both";
+        default: return "both";
+    }
+}
+
+static ArmSide stringToArmSide(const std::string& str) {
+    if (str == "left") return ArmSide::left;
+    if (str == "right") return ArmSide::right;
+    if (str == "both") return ArmSide::both;
+    return ArmSide::both; // default
+}
+
+// Helper functions to determine which arms to process
+static bool shouldProcessLeft(ArmSide side) {
+    return side == ArmSide::left || side == ArmSide::both;
+}
+
+static bool shouldProcessRight(ArmSide side) {
+    return side == ArmSide::right || side == ArmSide::both;
+}
+
+// Global service instances
 ROSService* g_get_state_service = nullptr;
 
-rapidjson::Document create_get_state_response(ResearchInterface* research_interface, const std::string& arm_selection) {
+// Default arm selection state
+ArmSide g_arm_side = ArmSide::both; // default to both arms
+
+rapidjson::Document create_get_state_response(ResearchInterface* research_interface, ArmSide arm_side) {
     if (!research_interface) {
         rapidjson::Document empty;
         empty.SetObject();
@@ -34,14 +67,14 @@ rapidjson::Document create_get_state_response(ResearchInterface* research_interf
     auto& allocator = response.GetAllocator();
 
     // Determine which arm(s) to return
-    bool return_left = (arm_selection == "left" || arm_selection == "both");
-    bool return_right = (arm_selection == "right" || arm_selection == "both");
+    bool return_left = shouldProcessLeft(arm_side);
+    bool return_right = shouldProcessRight(arm_side);
 
     if (!return_left && !return_right) {
         // Invalid arm selection, default to both
         return_left = true;
         return_right = true;
-        PLOGW << "Invalid arm selection '" << arm_selection << "', defaulting to 'both'";
+        PLOGW << "Invalid arm selection '" << armSideToString(arm_side) << "', defaulting to 'both'";
     }
 
     // Get joint states
@@ -57,17 +90,17 @@ rapidjson::Document create_get_state_response(ResearchInterface* research_interf
     // Add left arm data if requested
     if (return_left) {
         // Create joint state message
-        rapidjson::Document left_joint_state = create_joint_state_message(left_states);
-        rapidjson::Value left_joint_state_value;
-        left_joint_state_value.CopyFrom(left_joint_state, allocator);
-        response.AddMember("left_joint_state", left_joint_state_value, allocator);
+    rapidjson::Document left_joint_state = create_joint_state_message(left_states);
+    rapidjson::Value left_joint_state_value;
+    left_joint_state_value.CopyFrom(left_joint_state, allocator);
+    response.AddMember("left_joint_state", left_joint_state_value, allocator);
 
-        // Add left sizes array
-        rapidjson::Value left_sizes_array(rapidjson::kArrayType);
-        for (const auto& size : left_sizes) {
-            left_sizes_array.PushBack(size, allocator);
-        }
-        response.AddMember("left_sizes", left_sizes_array, allocator);
+    // Add left sizes array
+    rapidjson::Value left_sizes_array(rapidjson::kArrayType);
+    for (const auto& size : left_sizes) {
+        left_sizes_array.PushBack(size, allocator);
+    }
+    response.AddMember("left_sizes", left_sizes_array, allocator);
     }
 
     // Add right arm data if requested
@@ -78,35 +111,35 @@ rapidjson::Document create_get_state_response(ResearchInterface* research_interf
         right_joint_state_value.CopyFrom(right_joint_state, allocator);
         response.AddMember("right_joint_state", right_joint_state_value, allocator);
 
-        // Add right sizes array
-        rapidjson::Value right_sizes_array(rapidjson::kArrayType);
-        for (const auto& size : right_sizes) {
-            right_sizes_array.PushBack(size, allocator);
-        }
-        response.AddMember("right_sizes", right_sizes_array, allocator);
+    // Add right sizes array
+    rapidjson::Value right_sizes_array(rapidjson::kArrayType);
+    for (const auto& size : right_sizes) {
+        right_sizes_array.PushBack(size, allocator);
+    }
+    response.AddMember("right_sizes", right_sizes_array, allocator);
     }
 
     return response;
 }
 
 // Helper function to create the service callback
-static auto create_get_state_callback(ROSBridge& ros_bridge, ResearchInterface* research_interface) {
+auto create_get_state_callback(ROSBridge& ros_bridge, ResearchInterface* research_interface) {
     return [&ros_bridge, research_interface](
         ROSBridgeCallServiceMsg &request, 
         rapidjson::Document::AllocatorType &allocator) {
         
         // Extract arm selection from request arguments
-        std::string arm_selection = "both"; // default to both arms
+        ArmSide arm_side = g_arm_side; // default to both arms
         if (!request.args_json_.IsNull() && request.args_json_.IsObject()) {
             if (request.args_json_.HasMember("arm") && request.args_json_["arm"].IsString()) {
-                arm_selection = request.args_json_["arm"].GetString();
+                arm_side = stringToArmSide(request.args_json_["arm"].GetString());
             }
         }
         
-        PLOGI << "Received service request for /harmony/get_state (arm: " << arm_selection << ")";
+        PLOGI << "Received service request for /harmony/get_state (arm: " << armSideToString(arm_side) << ")";
         
         // Create response with current joint states and sizes for requested arm
-        rapidjson::Document response_data = create_get_state_response(research_interface, arm_selection);
+        rapidjson::Document response_data = create_get_state_response(research_interface, arm_side);
         
         // Create service response message
         ROSBridgeServiceResponseMsg response(true);
@@ -139,7 +172,7 @@ static auto create_get_state_callback(ROSBridge& ros_bridge, ResearchInterface* 
 }
 
 bool setup_get_state_service(ROSBridge& ros_bridge, ResearchInterface* research_interface) {
-    // Create service instance
+    // Create service instance (static to persist across calls)
     // Using std_srvs/Trigger which has a string message field we can use for JSON data
     static ROSService get_state_service(ros_bridge, "/harmony/get_state", "std_srvs/Trigger");
     g_get_state_service = &get_state_service;
@@ -147,31 +180,12 @@ bool setup_get_state_service(ROSBridge& ros_bridge, ResearchInterface* research_
     // Create service callback using helper function
     auto service_callback = create_get_state_callback(ros_bridge, research_interface);
 
-    // Advertise the service
+    // Advertise the service (will re-advertise if already advertised)
     bool success = get_state_service.Advertise(service_callback);
     if (success) {
         PLOGI << "Advertised service: /harmony/get_state";
     } else {
         PLOGE << "Failed to advertise service: /harmony/get_state";
-    }
-    return success;
-}
-
-bool advertise_get_state_service(ROSBridge& ros_bridge, ResearchInterface* research_interface) {
-    if (!g_get_state_service) {
-        PLOGW << "Service not initialized, setting up service first";
-        return setup_get_state_service(ros_bridge, research_interface);
-    }
-
-    // Create the service callback
-    auto service_callback = create_get_state_callback(ros_bridge, research_interface);
-
-    // Re-advertise the existing service
-    bool success = g_get_state_service->Advertise(service_callback);
-    if (success) {
-        PLOGI << "Re-advertised service: /harmony/get_state";
-    } else {
-        PLOGE << "Failed to re-advertise service: /harmony/get_state";
     }
     return success;
 }
