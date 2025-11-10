@@ -26,10 +26,30 @@ ROSService* g_get_state_left_service = nullptr;
 ROSService* g_get_state_right_service = nullptr;
 ROSService* g_enable_left_service = nullptr;
 ROSService* g_enable_right_service = nullptr;
+ROSService* g_enable_harmony_mode_left_service = nullptr;
+ROSService* g_enable_harmony_mode_right_service = nullptr;
+ROSService* g_enable_impedance_mode_left_service = nullptr;
+ROSService* g_enable_impedance_mode_right_service = nullptr;
+ROSService* g_enable_torque_mode_left_service = nullptr;
+ROSService* g_enable_torque_mode_right_service = nullptr;
 
 // Global enable state variables (start with both disabled)
 bool g_left_arm_enabled = false;
 bool g_right_arm_enabled = false;
+
+// Global control mode tracking (start with harmony mode)
+ControlMode g_left_arm_mode = ControlMode::harmony;
+ControlMode g_right_arm_mode = ControlMode::harmony;
+
+// Helper function to convert ControlMode to string
+static std::string modeToString(ControlMode mode) {
+    switch (mode) {
+        case ControlMode::harmony: return "harmony";
+        case ControlMode::impedance: return "impedance";
+        case ControlMode::torque: return "torque";
+        default: return "harmony";
+    }
+}
 
 rapidjson::Document create_get_state_response(ResearchInterface* research_interface, bool return_left, bool return_right) {
     if (!research_interface) {
@@ -76,6 +96,9 @@ rapidjson::Document create_get_state_response(ResearchInterface* research_interf
     
     // Add left enable state
     response.AddMember("left_enabled", g_left_arm_enabled, allocator);
+    
+    // Add left mode
+    response.AddMember("left_mode", rapidjson::Value(modeToString(g_left_arm_mode).c_str(), allocator), allocator);
     }
 
     // Add right arm data if requested
@@ -95,6 +118,9 @@ rapidjson::Document create_get_state_response(ResearchInterface* research_interf
     
     // Add right enable state
     response.AddMember("right_enabled", g_right_arm_enabled, allocator);
+    
+    // Add right mode
+    response.AddMember("right_mode", rapidjson::Value(modeToString(g_right_arm_mode).c_str(), allocator), allocator);
     }
 
     return response;
@@ -398,6 +424,245 @@ bool setup_enable_right_service(ROSBridge& ros_bridge, ResearchInterface* resear
         PLOGI << "Advertised service: /harmony/right/enable";
     } else {
         PLOGE << "Failed to advertise service: /harmony/right/enable";
+    }
+    return success;
+}
+
+// Helper function to set control mode for an arm
+static bool setArmControlMode(ResearchInterface* research_interface, bool is_left, ControlMode mode) {
+    if (!research_interface) {
+        PLOGE << "Research interface is null";
+        return false;
+    }
+
+    auto controller = is_left ? research_interface->makeLeftArmController() : research_interface->makeRightArmController();
+    if (!controller->init()) {
+        PLOGE << "Failed to initialize " << (is_left ? "left" : "right") << " arm controller";
+        return false;
+    }
+
+    // Stop current mode if different - remove existing overrides
+    ControlMode& current_mode = is_left ? g_left_arm_mode : g_right_arm_mode;
+    if (current_mode != mode) {
+        controller->removeOverride();
+    }
+
+    // Set new mode
+    switch (mode) {
+        case ControlMode::harmony:
+            controller->removeOverride();
+            current_mode = ControlMode::harmony;
+            PLOGI << (is_left ? "Left" : "Right") << " arm set to harmony mode";
+            break;
+
+        case ControlMode::impedance: {
+            // Get current joint positions to prevent arm from jumping
+            auto joint_states = research_interface->joints();
+            auto states = is_left ? joint_states.leftArm.getOrderedStates() : joint_states.rightArm.getOrderedStates();
+            
+            // Create overrides with current positions, zero stiffness/torque (will be set via topics)
+            std::array<harmony::JointOverride, harmony::armJointCount> overrides;
+            for (size_t i = 0; i < harmony::armJointCount; i++) {
+                overrides[i] = {
+                    states[i].position_rad,  // desired position (current, to prevent jump)
+                    0.0,                      // desired stiffness (will be set via topics)
+                    0.0                       // desired torque (zero for impedance)
+                };
+            }
+            
+            harmony::ArmJointsOverride override(overrides);
+            controller->setJointsOverride(override);
+            current_mode = ControlMode::impedance;
+            PLOGI << (is_left ? "Left" : "Right") << " arm set to impedance mode (control values via topics)";
+            break;
+        }
+
+        case ControlMode::torque: {
+            // Create overrides with zero values (will be set via topics)
+            std::array<harmony::JointOverride, harmony::armJointCount> overrides;
+            for (size_t i = 0; i < harmony::armJointCount; i++) {
+                overrides[i] = {
+                    0.0,  // desired position (zero)
+                    0.0,  // desired stiffness (zero)
+                    0.0   // desired torque (will be set via topics)
+                };
+            }
+            
+            harmony::ArmJointsOverride override(overrides);
+            controller->setJointsOverride(override);
+            current_mode = ControlMode::torque;
+            PLOGI << (is_left ? "Left" : "Right") << " arm set to torque mode (control values via topics)";
+            break;
+        }
+    }
+
+    return true;
+}
+
+// Helper function to create harmony mode callback
+auto create_enable_harmony_mode_callback(ROSBridge& ros_bridge, ResearchInterface* research_interface, bool is_left) {
+    return [&ros_bridge, research_interface, is_left](
+        ROSBridgeCallServiceMsg &request, 
+        rapidjson::Document::AllocatorType &allocator) {
+        
+        std::string arm_name = is_left ? "left" : "right";
+        PLOGI << "Received service request for /harmony/" << arm_name << "/enable_harmony_mode";
+        
+        bool success = setArmControlMode(research_interface, is_left, ControlMode::harmony);
+        
+        ROSBridgeServiceResponseMsg response(true);
+        response.id_ = request.id_;
+        response.service_ = request.service_;
+        response.result_ = success;
+        
+        rapidjson::Document response_values;
+        response_values.SetObject();
+        response_values.AddMember("success", success, allocator);
+        std::string message = success ? (arm_name + " arm set to harmony mode") : ("Failed to set " + arm_name + " arm to harmony mode");
+        response_values.AddMember("message", rapidjson::Value(message.c_str(), allocator), allocator);
+        
+        response.values_json_.CopyFrom(response_values, allocator);
+        ros_bridge.SendMessage(response);
+        PLOGI << "Sent service response for /harmony/" << arm_name << "/enable_harmony_mode";
+    };
+}
+
+// Helper function to create impedance mode callback
+auto create_enable_impedance_mode_callback(ROSBridge& ros_bridge, ResearchInterface* research_interface, bool is_left) {
+    return [&ros_bridge, research_interface, is_left](
+        ROSBridgeCallServiceMsg &request, 
+        rapidjson::Document::AllocatorType &allocator) {
+        
+        std::string arm_name = is_left ? "left" : "right";
+        PLOGI << "Received service request for /harmony/" << arm_name << "/enable_impedance_mode";
+        
+        bool success = setArmControlMode(research_interface, is_left, ControlMode::impedance);
+        
+        ROSBridgeServiceResponseMsg response(true);
+        response.id_ = request.id_;
+        response.service_ = request.service_;
+        response.result_ = success;
+        
+        rapidjson::Document response_values;
+        response_values.SetObject();
+        response_values.AddMember("success", success, allocator);
+        std::string message = success ? (arm_name + " arm set to impedance mode") : ("Failed to set " + arm_name + " arm to impedance mode");
+        response_values.AddMember("message", rapidjson::Value(message.c_str(), allocator), allocator);
+        
+        response.values_json_.CopyFrom(response_values, allocator);
+        ros_bridge.SendMessage(response);
+        PLOGI << "Sent service response for /harmony/" << arm_name << "/enable_impedance_mode";
+    };
+}
+
+// Helper function to create torque mode callback
+auto create_enable_torque_mode_callback(ROSBridge& ros_bridge, ResearchInterface* research_interface, bool is_left) {
+    return [&ros_bridge, research_interface, is_left](
+        ROSBridgeCallServiceMsg &request, 
+        rapidjson::Document::AllocatorType &allocator) {
+        
+        std::string arm_name = is_left ? "left" : "right";
+        PLOGI << "Received service request for /harmony/" << arm_name << "/enable_torque_mode";
+        
+        bool success = setArmControlMode(research_interface, is_left, ControlMode::torque);
+        
+        ROSBridgeServiceResponseMsg response(true);
+        response.id_ = request.id_;
+        response.service_ = request.service_;
+        response.result_ = success;
+        
+        rapidjson::Document response_values;
+        response_values.SetObject();
+        response_values.AddMember("success", success, allocator);
+        std::string message = success ? (arm_name + " arm set to torque mode") : ("Failed to set " + arm_name + " arm to torque mode");
+        response_values.AddMember("message", rapidjson::Value(message.c_str(), allocator), allocator);
+        
+        response.values_json_.CopyFrom(response_values, allocator);
+        ros_bridge.SendMessage(response);
+        PLOGI << "Sent service response for /harmony/" << arm_name << "/enable_torque_mode";
+    };
+}
+
+bool setup_enable_harmony_mode_left_service(ROSBridge& ros_bridge, ResearchInterface* research_interface) {
+    static ROSService service(ros_bridge, "/harmony/left/enable_harmony_mode", "std_srvs/Trigger");
+    g_enable_harmony_mode_left_service = &service;
+    
+    auto callback = create_enable_harmony_mode_callback(ros_bridge, research_interface, true);
+    bool success = service.Advertise(callback);
+    if (success) {
+        PLOGI << "Advertised service: /harmony/left/enable_harmony_mode";
+    } else {
+        PLOGE << "Failed to advertise service: /harmony/left/enable_harmony_mode";
+    }
+    return success;
+}
+
+bool setup_enable_harmony_mode_right_service(ROSBridge& ros_bridge, ResearchInterface* research_interface) {
+    static ROSService service(ros_bridge, "/harmony/right/enable_harmony_mode", "std_srvs/Trigger");
+    g_enable_harmony_mode_right_service = &service;
+    
+    auto callback = create_enable_harmony_mode_callback(ros_bridge, research_interface, false);
+    bool success = service.Advertise(callback);
+    if (success) {
+        PLOGI << "Advertised service: /harmony/right/enable_harmony_mode";
+    } else {
+        PLOGE << "Failed to advertise service: /harmony/right/enable_harmony_mode";
+    }
+    return success;
+}
+
+bool setup_enable_impedance_mode_left_service(ROSBridge& ros_bridge, ResearchInterface* research_interface) {
+    static ROSService service(ros_bridge, "/harmony/left/enable_impedance_mode", "std_srvs/Trigger");
+    g_enable_impedance_mode_left_service = &service;
+    
+    auto callback = create_enable_impedance_mode_callback(ros_bridge, research_interface, true);
+    bool success = service.Advertise(callback);
+    if (success) {
+        PLOGI << "Advertised service: /harmony/left/enable_impedance_mode";
+    } else {
+        PLOGE << "Failed to advertise service: /harmony/left/enable_impedance_mode";
+    }
+    return success;
+}
+
+bool setup_enable_impedance_mode_right_service(ROSBridge& ros_bridge, ResearchInterface* research_interface) {
+    static ROSService service(ros_bridge, "/harmony/right/enable_impedance_mode", "std_srvs/Trigger");
+    g_enable_impedance_mode_right_service = &service;
+    
+    auto callback = create_enable_impedance_mode_callback(ros_bridge, research_interface, false);
+    bool success = service.Advertise(callback);
+    if (success) {
+        PLOGI << "Advertised service: /harmony/right/enable_impedance_mode";
+    } else {
+        PLOGE << "Failed to advertise service: /harmony/right/enable_impedance_mode";
+    }
+    return success;
+}
+
+bool setup_enable_torque_mode_left_service(ROSBridge& ros_bridge, ResearchInterface* research_interface) {
+    static ROSService service(ros_bridge, "/harmony/left/enable_torque_mode", "std_srvs/Trigger");
+    g_enable_torque_mode_left_service = &service;
+    
+    auto callback = create_enable_torque_mode_callback(ros_bridge, research_interface, true);
+    bool success = service.Advertise(callback);
+    if (success) {
+        PLOGI << "Advertised service: /harmony/left/enable_torque_mode";
+    } else {
+        PLOGE << "Failed to advertise service: /harmony/left/enable_torque_mode";
+    }
+    return success;
+}
+
+bool setup_enable_torque_mode_right_service(ROSBridge& ros_bridge, ResearchInterface* research_interface) {
+    static ROSService service(ros_bridge, "/harmony/right/enable_torque_mode", "std_srvs/Trigger");
+    g_enable_torque_mode_right_service = &service;
+    
+    auto callback = create_enable_torque_mode_callback(ros_bridge, research_interface, false);
+    bool success = service.Advertise(callback);
+    if (success) {
+        PLOGI << "Advertised service: /harmony/right/enable_torque_mode";
+    } else {
+        PLOGE << "Failed to advertise service: /harmony/right/enable_torque_mode";
     }
     return success;
 }

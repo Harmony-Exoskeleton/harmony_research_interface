@@ -23,16 +23,33 @@ namespace harmony {
 using namespace rosbridge2cpp;
 using namespace harmony;
 
+// Control mode enum
+enum class ControlMode {
+    harmony,
+    impedance,
+    torque
+};
+
 // Global service instances
 extern ROSService* g_get_state_service;
 extern ROSService* g_get_state_left_service;
 extern ROSService* g_get_state_right_service;
 extern ROSService* g_enable_left_service;
 extern ROSService* g_enable_right_service;
+extern ROSService* g_enable_harmony_mode_left_service;
+extern ROSService* g_enable_harmony_mode_right_service;
+extern ROSService* g_enable_impedance_mode_left_service;
+extern ROSService* g_enable_impedance_mode_right_service;
+extern ROSService* g_enable_torque_mode_left_service;
+extern ROSService* g_enable_torque_mode_right_service;
 
 // Global enable state variables
 extern bool g_left_arm_enabled;
 extern bool g_right_arm_enabled;
+
+// Global control mode tracking
+extern ControlMode g_left_arm_mode;
+extern ControlMode g_right_arm_mode;
 
 
 /**
@@ -91,6 +108,54 @@ bool setup_enable_left_service(ROSBridge& ros_bridge, ResearchInterface* researc
  * @return true if service was successfully advertised, false otherwise
  */
 bool setup_enable_right_service(ROSBridge& ros_bridge, ResearchInterface* research_interface);
+
+/**
+ * @brief Setup and advertise the enable_harmony_mode service for left arm
+ * @param ros_bridge Reference to the ROS bridge instance
+ * @param research_interface Pointer to the research interface
+ * @return true if service was successfully advertised, false otherwise
+ */
+bool setup_enable_harmony_mode_left_service(ROSBridge& ros_bridge, ResearchInterface* research_interface);
+
+/**
+ * @brief Setup and advertise the enable_harmony_mode service for right arm
+ * @param ros_bridge Reference to the ROS bridge instance
+ * @param research_interface Pointer to the research interface
+ * @return true if service was successfully advertised, false otherwise
+ */
+bool setup_enable_harmony_mode_right_service(ROSBridge& ros_bridge, ResearchInterface* research_interface);
+
+/**
+ * @brief Setup and advertise the enable_impedance_mode service for left arm
+ * @param ros_bridge Reference to the ROS bridge instance
+ * @param research_interface Pointer to the research interface
+ * @return true if service was successfully advertised, false otherwise
+ */
+bool setup_enable_impedance_mode_left_service(ROSBridge& ros_bridge, ResearchInterface* research_interface);
+
+/**
+ * @brief Setup and advertise the enable_impedance_mode service for right arm
+ * @param ros_bridge Reference to the ROS bridge instance
+ * @param research_interface Pointer to the research interface
+ * @return true if service was successfully advertised, false otherwise
+ */
+bool setup_enable_impedance_mode_right_service(ROSBridge& ros_bridge, ResearchInterface* research_interface);
+
+/**
+ * @brief Setup and advertise the enable_torque_mode service for left arm
+ * @param ros_bridge Reference to the ROS bridge instance
+ * @param research_interface Pointer to the research interface
+ * @return true if service was successfully advertised, false otherwise
+ */
+bool setup_enable_torque_mode_left_service(ROSBridge& ros_bridge, ResearchInterface* research_interface);
+
+/**
+ * @brief Setup and advertise the enable_torque_mode service for right arm
+ * @param ros_bridge Reference to the ROS bridge instance
+ * @param research_interface Pointer to the research interface
+ * @return true if service was successfully advertised, false otherwise
+ */
+bool setup_enable_torque_mode_right_service(ROSBridge& ros_bridge, ResearchInterface* research_interface);
 
 #endif // HARMONY_SERVICES_H
 
