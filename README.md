@@ -4,7 +4,7 @@ Code for the research interface library of Harmony. This library provides a ROS2
 
 ## Overview
 
-The `harmony_ros_interface` application runs on the Harmony robot and connects to a rosbridge server, enabling ROS2 communication over WebSocket. The application publishes joint states, arm sizes, and TF transforms, while providing services for state queries and control mode management.
+The `harmony_ros_interface` application runs on the Harmony robot and connects to a rosbridge server, enabling ROS2 communication over WebSocket. The application publishes joint states, arm sizes, and TF transforms, while providing services for state queries and control mode management. Additionally, it subscribes to joint command topics, allowing real-time control of torque, stiffness, and position values for each arm.
 
 **Architecture:**
 - **Harmony Target Machine**: Runs `harmony_ros_interface` (cross-compiled binary)
@@ -184,6 +184,7 @@ Before launching `harmony_ros_interface` on Harmony, start the rosbridge server 
    - Connect to the rosbridge server on your development machine
    - Start publishing joint states, sizes, and TF transforms
    - Advertise all Harmony services
+   - Subscribe to joint command topics for real-time control
 
 ### Step 6: Debug from Development Machine
 
@@ -205,12 +206,18 @@ From your development machine, you can interact with the Harmony robot using sta
    ```
    
    You should see:
-   - `/harmony/left/joint_states`
-   - `/harmony/right/joint_states`
-   - `/harmony/left/sizes`
-   - `/harmony/right/sizes`
-   - `/tf`
-   - `/tf_static`
+   - `/harmony/left/joint_states` (published)
+   - `/harmony/right/joint_states` (published)
+   - `/harmony/left/sizes` (published)
+   - `/harmony/right/sizes` (published)
+   - `/harmony/left/desired_torque` (subscribed)
+   - `/harmony/right/desired_torque` (subscribed)
+   - `/harmony/left/desired_stiffness` (subscribed)
+   - `/harmony/right/desired_stiffness` (subscribed)
+   - `/harmony/left/desired_position` (subscribed)
+   - `/harmony/right/desired_position` (subscribed)
+   - `/tf` (published)
+   - `/tf_static` (published)
 
 4. **List available services:**
    ```bash
@@ -221,23 +228,29 @@ From your development machine, you can interact with the Harmony robot using sta
    - `/harmony/get_state`
    - `/harmony/left/get_state`
    - `/harmony/right/get_state`
-   - `/harmony/left/enable`
-   - `/harmony/right/enable`
-   - `/harmony/left/enable_harmony_mode`
+   - `/harmony/left/disable_override_mode`
+   - `/harmony/right/disable_override_mode`
    - `/harmony/left/enable_impedance_mode`
    - `/harmony/left/enable_torque_mode`
-   - `/harmony/right/enable_harmony_mode`
    - `/harmony/right/enable_impedance_mode`
    - `/harmony/right/enable_torque_mode`
+   - `/harmony/left/enable_gravity`
+   - `/harmony/right/enable_gravity`
+   - `/harmony/left/enable_shr`
+   - `/harmony/right/enable_shr`
+   - `/harmony/left/enable_constraints`
+   - `/harmony/right/enable_constraints`
+   - `/harmony/reset_shared_memory`
 
 5. **Get robot state:**
    ```bash
    ros2 service call /harmony/get_state std_srvs/srv/Trigger
    ```
 
-6. **Enable an arm:**
+6. **Disable override mode (returns arm to harmony mode):**
    ```bash
-   ros2 service call /harmony/left/enable std_srvs/srv/SetBool "{data: true}"
+   ros2 service call /harmony/left/disable_override_mode std_srvs/srv/Trigger
+   ros2 service call /harmony/right/disable_override_mode std_srvs/srv/Trigger
    ```
 
 7. **Set control mode:**
@@ -249,13 +262,69 @@ From your development machine, you can interact with the Harmony robot using sta
    ros2 service call /harmony/right/enable_torque_mode std_srvs/srv/Trigger
    ```
 
-8. **Monitor joint states:**
+8. **Configure arm features:**
+   ```bash
+   # Enable/disable gravity compensation
+   ros2 service call /harmony/left/enable_gravity std_srvs/srv/SetBool "{data: true}"
+   ros2 service call /harmony/left/enable_gravity std_srvs/srv/SetBool "{data: false}"
+   
+   # Enable/disable SHR (scapulo-humeral rhythm)
+   ros2 service call /harmony/left/enable_shr std_srvs/srv/SetBool "{data: true}"
+   ros2 service call /harmony/left/enable_shr std_srvs/srv/SetBool "{data: false}"
+   
+   # Enable/disable constraints
+   ros2 service call /harmony/left/enable_constraints std_srvs/srv/SetBool "{data: true}"
+   ros2 service call /harmony/left/enable_constraints std_srvs/srv/SetBool "{data: false}"
+   ```
+
+9. **Reset shared memory:**
+   ```bash
+   ros2 service call /harmony/reset_shared_memory std_srvs/srv/Trigger
+   ```
+
+10. **Monitor joint states:**
    ```bash
    ros2 topic echo /harmony/left/joint_states
    ros2 topic echo /harmony/right/joint_states
    ```
 
-9. **Visualize in RViz2:**
+11. **Control arms via topics:**
+   
+   After setting an arm to torque or impedance mode, you can send commands via ROS topics:
+   
+   **Torque commands (works in both torque and impedance modes):**
+   ```bash
+   # Send torque commands to left arm (7 values in Nm)
+   ros2 topic pub /harmony/left/desired_torque std_msgs/msg/Float64MultiArray "{data: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]}"
+   
+   # Send torque commands to right arm
+   ros2 topic pub /harmony/right/desired_torque std_msgs/msg/Float64MultiArray "{data: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]}"
+   ```
+   
+   **Stiffness commands (requires impedance mode):**
+   ```bash
+   # Send stiffness commands to left arm (7 values in Nm/rad)
+   ros2 topic pub /harmony/left/desired_stiffness std_msgs/msg/Float64MultiArray "{data: [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0]}"
+   
+   # Send stiffness commands to right arm
+   ros2 topic pub /harmony/right/desired_stiffness std_msgs/msg/Float64MultiArray "{data: [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0]}"
+   ```
+   
+   **Position commands (requires impedance mode):**
+   ```bash
+   # Send position commands to left arm (7 values in radians)
+   ros2 topic pub /harmony/left/desired_position std_msgs/msg/Float64MultiArray "{data: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]}"
+   
+   # Send position commands to right arm
+   ros2 topic pub /harmony/right/desired_position std_msgs/msg/Float64MultiArray "{data: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]}"
+   ```
+   
+   **Note:** 
+   - In **impedance mode**: Torque, stiffness, and position fields are maintained and can be updated independently. When updating one field (e.g., stiffness), the other fields (e.g., torque, position) are preserved.
+   - In **torque mode**: Only torque commands are accepted. Stiffness and position commands are rejected.
+   - Fields are reset upon mode change.
+
+12. **Visualize in RViz2:**
     ```bash
     rviz2
     ```
@@ -319,9 +388,43 @@ The `harmony_ros_interface` application supports:
   - `ROSBRIDGE_HOST`: rosbridge server hostname/IP (default: `127.0.0.1`). **On Harmony, this must be set to your development machine's IP address**
   - `ROSBRIDGE_PORT`: rosbridge server port (default: `9090`)
 
+### Joint Command Topics
+
+The application subscribes to the following topics for real-time joint control:
+
+- **Torque commands** (`/harmony/left/desired_torque`, `/harmony/right/desired_torque`):
+  - Message type: `std_msgs/Float64MultiArray`
+  - Requires: Arm must be in **torque mode** or **impedance mode** (use `/harmony/{left|right}/enable_torque_mode` or `/harmony/{left|right}/enable_impedance_mode` service)
+  - Format: Array of 7 double values (torque in Nm for each joint)
+  - Behavior: Updates torque values while preserving other fields. Commands are rejected if arm is not in torque or impedance mode.
+
+- **Stiffness commands** (`/harmony/left/desired_stiffness`, `/harmony/right/desired_stiffness`):
+  - Message type: `std_msgs/Float64MultiArray`
+  - Requires: Arm must be in **impedance mode** (use `/harmony/{left|right}/enable_impedance_mode` service)
+  - Format: Array of 7 double values (stiffness in Nm/rad for each joint)
+  - Behavior: Updates stiffness values while preserving torque and position. Commands are rejected if arm is not in impedance mode.
+
+- **Position commands** (`/harmony/left/desired_position`, `/harmony/right/desired_position`):
+  - Message type: `std_msgs/Float64MultiArray`
+  - Requires: Arm must be in **impedance mode** (use `/harmony/{left|right}/enable_impedance_mode` service)
+  - Format: Array of 7 double values (position in radians for each joint)
+  - Behavior: Updates position values while preserving torque and stiffness. Commands are rejected if arm is not in impedance mode.
+
+**Important Notes:**
+- Commands are only processed when the arm is in the correct control mode. Commands sent in the wrong mode are rejected.
+- In **impedance mode**: Torque, stiffness, and position fields are maintained and can be updated independently. When updating one field, the other fields are preserved.
+- In **torque mode**: Only torque commands are accepted. Stiffness and position commands are rejected.
+- Fields are reset upon mode change.
+- All topics use `Float64MultiArray` with exactly 7 values (one per joint)
+- Debug logging (PLOGI) shows which fields are being updated for troubleshooting
+
 ### Logging
 
 Logs are written to: `~/harmony_research/bin/log/harmony_ros_interface_log.csv`
+
+The application logs:
+- Info level (PLOGI): Joint override updates, mode changes, subscriber status
+- Debug level (PLOGD): Detailed preservation of values when updating single field types
 
 ### Build Output
 

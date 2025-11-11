@@ -68,9 +68,23 @@ bool updateJointOverride(ResearchInterface* research_interface, bool is_left,
     }
 
     // Check current mode matches required mode
+    // Special case: torque commands are allowed in both torque and impedance modes
     ControlMode current_mode = is_left ? g_left_arm_mode : g_right_arm_mode;
-    if (current_mode != required_mode) {
-        PLOGW << (is_left ? "Left" : "Right") << " arm is not in " 
+    bool mode_valid = false;
+    
+    if (torque_values) {
+        // Torque commands are allowed in both torque and impedance modes
+        mode_valid = (current_mode == ControlMode::torque || current_mode == ControlMode::impedance);
+    } else {
+        // Stiffness and position commands only work in impedance mode
+        mode_valid = (current_mode == ControlMode::impedance);
+    }
+    
+    if (!mode_valid) {
+        std::string mode_name = (current_mode == ControlMode::torque) ? "torque" : 
+                                (current_mode == ControlMode::impedance) ? "impedance" : "harmony";
+        PLOGW << (is_left ? "Left" : "Right") << " arm is in " << mode_name 
+              << " mode, but command requires " 
               << (required_mode == ControlMode::torque ? "torque" : "impedance") 
               << " mode, ignoring command";
         return false;
