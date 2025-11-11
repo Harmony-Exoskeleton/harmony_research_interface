@@ -306,7 +306,7 @@ int main(int argc, const char** argv) {
 
     for (int i=0; i<=nSteps; i++) {
         robotStartPosition = getCurrentArmPositionsAsDataLine(&info);
-        auto overrides = data2override(robotStartPosition, i/nSteps);
+        auto overrides = data2override(robotStartPosition, static_cast<double>(i)/static_cast<double>(nSteps));
 
         left->setJointsOverride(overrides.leftOverrides);
         right->setJointsOverride(overrides.rightOverrides);

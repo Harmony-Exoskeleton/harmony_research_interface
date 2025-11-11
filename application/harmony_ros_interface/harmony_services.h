@@ -9,16 +9,6 @@
 #include "research_interface.h"
 #include "ros_bridge.h"
 #include "ros_service.h"
-#include "rapidjson/document.h"
-
-namespace rosbridge2cpp {
-    class ROSBridge;
-    class ROSService;
-}
-
-namespace harmony {
-    class ResearchInterface;
-}
 
 using namespace rosbridge2cpp;
 using namespace harmony;

@@ -21,7 +21,10 @@
 #include "types.h"
 #include "client/socket_websocket_connection.h"
 #include "rapidjson/document.h"
+#include "rapidjson/writer.h"
+#include "rapidjson/stringbuffer.h"
 #include "harmony_services.h"
+#include "harmony_topics.h"
 #include "message_utils.h"
 
 #include <thread>
@@ -309,6 +312,8 @@ int main(int argc, char* argv[]) {
     setup_enable_constraints_left_service(ros_bridge, &research_interface);
     setup_enable_constraints_right_service(ros_bridge, &research_interface);
     setup_reset_shared_memory_service(ros_bridge);
+    PLOGI << "Setting up joint command subscribers";
+    setup_joint_command_subscribers(ros_bridge, &research_interface);
 
     // Main loop setup
     auto loop_period = std::chrono::microseconds(static_cast<int>(1000000.0 / loop_frequency_hz));
@@ -349,6 +354,8 @@ int main(int argc, char* argv[]) {
             setup_enable_constraints_left_service(ros_bridge, &research_interface);
             setup_enable_constraints_right_service(ros_bridge, &research_interface);
             setup_reset_shared_memory_service(ros_bridge);
+            PLOGI << "Re-setting up joint command subscribers";
+            setup_joint_command_subscribers(ros_bridge, &research_interface);
         }
         was_connected = is_connected;
                 
