@@ -296,10 +296,8 @@ int main(int argc, char* argv[]) {
     setup_get_state_service(ros_bridge, &research_interface);
     setup_get_state_left_service(ros_bridge, &research_interface);
     setup_get_state_right_service(ros_bridge, &research_interface);
-    setup_enable_left_service(ros_bridge, &research_interface);
-    setup_enable_right_service(ros_bridge, &research_interface);
-    setup_enable_harmony_mode_left_service(ros_bridge, &research_interface);
-    setup_enable_harmony_mode_right_service(ros_bridge, &research_interface);
+    setup_disable_override_mode_left_service(ros_bridge, &research_interface);
+    setup_disable_override_mode_right_service(ros_bridge, &research_interface);
     setup_enable_impedance_mode_left_service(ros_bridge, &research_interface);
     setup_enable_impedance_mode_right_service(ros_bridge, &research_interface);
     setup_enable_torque_mode_left_service(ros_bridge, &research_interface);
@@ -338,10 +336,8 @@ int main(int argc, char* argv[]) {
             setup_get_state_service(ros_bridge, &research_interface);
             setup_get_state_left_service(ros_bridge, &research_interface);
             setup_get_state_right_service(ros_bridge, &research_interface);
-            setup_enable_left_service(ros_bridge, &research_interface);
-            setup_enable_right_service(ros_bridge, &research_interface);
-            setup_enable_harmony_mode_left_service(ros_bridge, &research_interface);
-            setup_enable_harmony_mode_right_service(ros_bridge, &research_interface);
+            setup_disable_override_mode_left_service(ros_bridge, &research_interface);
+            setup_disable_override_mode_right_service(ros_bridge, &research_interface);
             setup_enable_impedance_mode_left_service(ros_bridge, &research_interface);
             setup_enable_impedance_mode_right_service(ros_bridge, &research_interface);
             setup_enable_torque_mode_left_service(ros_bridge, &research_interface);

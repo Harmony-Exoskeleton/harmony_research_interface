@@ -36,8 +36,6 @@ extern ROSService* g_get_state_left_service;
 extern ROSService* g_get_state_right_service;
 extern ROSService* g_enable_left_service;
 extern ROSService* g_enable_right_service;
-extern ROSService* g_enable_harmony_mode_left_service;
-extern ROSService* g_enable_harmony_mode_right_service;
 extern ROSService* g_enable_impedance_mode_left_service;
 extern ROSService* g_enable_impedance_mode_right_service;
 extern ROSService* g_enable_torque_mode_left_service;
@@ -57,24 +55,6 @@ extern bool g_right_arm_enabled;
 // Global control mode tracking
 extern ControlMode g_left_arm_mode;
 extern ControlMode g_right_arm_mode;
-
-
-/**
- * @brief Create a callback function for the get_state service
- * @param ros_bridge Reference to the ROS bridge instance
- * @param research_interface Pointer to the research interface
- * @return Service callback function
- */
-auto create_get_state_callback(ROSBridge& ros_bridge, ResearchInterface* research_interface);
-
-/**
- * @brief Create a response message for the get_state service
- * @param research_interface Pointer to the research interface
- * @param return_left Whether to include left arm data
- * @param return_right Whether to include right arm data
- * @return JSON document containing joint states and sizes for the requested arm(s)
- */
-rapidjson::Document create_get_state_response(ResearchInterface* research_interface, bool return_left, bool return_right);
 
 /**
  * @brief Setup and advertise the get_state service (handles both initial setup and re-advertisement)
@@ -101,36 +81,21 @@ bool setup_get_state_left_service(ROSBridge& ros_bridge, ResearchInterface* rese
 bool setup_get_state_right_service(ROSBridge& ros_bridge, ResearchInterface* research_interface);
 
 /**
- * @brief Setup and advertise the enable service for left arm
+ * @brief Setup and advertise the disable_override_mode service for left arm
  * @param ros_bridge Reference to the ROS bridge instance
  * @param research_interface Pointer to the research interface
  * @return true if service was successfully advertised, false otherwise
  */
-bool setup_enable_left_service(ROSBridge& ros_bridge, ResearchInterface* research_interface);
+bool setup_disable_override_mode_left_service(ROSBridge& ros_bridge, ResearchInterface* research_interface);
 
 /**
- * @brief Setup and advertise the enable service for right arm
+ * @brief Setup and advertise the disable_override_mode service for right arm
  * @param ros_bridge Reference to the ROS bridge instance
  * @param research_interface Pointer to the research interface
  * @return true if service was successfully advertised, false otherwise
  */
-bool setup_enable_right_service(ROSBridge& ros_bridge, ResearchInterface* research_interface);
+bool setup_disable_override_mode_right_service(ROSBridge& ros_bridge, ResearchInterface* research_interface);
 
-/**
- * @brief Setup and advertise the enable_harmony_mode service for left arm
- * @param ros_bridge Reference to the ROS bridge instance
- * @param research_interface Pointer to the research interface
- * @return true if service was successfully advertised, false otherwise
- */
-bool setup_enable_harmony_mode_left_service(ROSBridge& ros_bridge, ResearchInterface* research_interface);
-
-/**
- * @brief Setup and advertise the enable_harmony_mode service for right arm
- * @param ros_bridge Reference to the ROS bridge instance
- * @param research_interface Pointer to the research interface
- * @return true if service was successfully advertised, false otherwise
- */
-bool setup_enable_harmony_mode_right_service(ROSBridge& ros_bridge, ResearchInterface* research_interface);
 
 /**
  * @brief Setup and advertise the enable_impedance_mode service for left arm
