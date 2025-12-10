@@ -119,19 +119,29 @@ The `harmony_ros_interface` application must be cross-compiled for the Harmony r
    
    This installs to `$HOME/harmony_research/bin/` by default.
 
-### Step 3: Deploy to Harmony via SSH
+### Step 3: Deploy to Harmony
 
-1. **Copy the binary to Harmony:**
-   ```bash
-   # From your development machine
-   scp build-harmony/application/harmony_ros_interface/harmony_ros_interface user@harmony:~/harmony_research/bin/ # (change as needed)
-   ```
+Use the provided deployment script to copy the binary to Harmony:
 
-2. **Make the binary executable:**
-   ```bash
-   ssh user@harmony  # (change as needed)
-   chmod +x ~/harmony_research/bin/harmony_ros_interface
-   ```
+```bash
+# Basic deployment (ROSBRIDGE_HOST defaults to 192.168.2.2)
+# This will set ROSBRIDGE_HOST=192.168.2.2 persistently in /root/.bashrc on Harmony
+./deploy-to-harmony.sh
+
+# Deployment with custom ROSBRIDGE_HOST
+# This will set ROSBRIDGE_HOST persistently in /root/.bashrc on Harmony
+ROSBRIDGE_HOST=<development-machine-ip> ./deploy-to-harmony.sh
+
+# With custom port (optional, defaults to 9090)
+ROSBRIDGE_HOST=<development-machine-ip> ROSBRIDGE_PORT=9090 ./deploy-to-harmony.sh
+```
+
+The script will:
+- Copy the binary to Harmony (default: `/opt/hbi/dev/bin/tools/`)
+- Optionally configure `ROSBRIDGE_HOST` in `/root/.bashrc` (if provided)
+- Verify the deployment
+
+**Note:** If you set `ROSBRIDGE_HOST` during deployment, it will be available in new shell sessions. To use it in the current session, run `source ~/.bashrc` after SSHing into Harmony.
 
 ### Step 4: Start rosbridge Server on Development Machine
 
@@ -167,9 +177,12 @@ Before launching `harmony_ros_interface` on Harmony, start the rosbridge server 
 
 2. **Launch harmony_ros_interface:**
    ```bash
-   cd ~/harmony_research/bin
+   cd /opt/hbi/dev/bin/tools  # or wherever you deployed the binary
    
-   # Set connection parameters to point to your development machine
+   # If ROSBRIDGE_HOST was set during deployment, load it (or start a new shell)
+   source ~/.bashrc
+   
+   # Or manually set connection parameters (overrides .bashrc)
    export ROSBRIDGE_HOST=<development-machine-ip>  # Replace with your dev machine's IP
    export ROSBRIDGE_PORT=9090
    
@@ -179,6 +192,11 @@ Before launching `harmony_ros_interface` on Harmony, start the rosbridge server 
    # Or specify custom loop frequency (e.g., 50 Hz)
    ./harmony_ros_interface 50
    ```
+   
+   **Configuration:**
+   - If `ROSBRIDGE_HOST` was set during deployment, it's stored in `/root/.bashrc` and will be available in new shell sessions
+   - You can manually edit `/root/.bashrc` to change the rosbridge server IP
+   - Environment variables set in the current shell take precedence over `.bashrc`
 
    The application will:
    - Connect to the rosbridge server on your development machine
@@ -387,6 +405,12 @@ The `harmony_ros_interface` application supports:
 - **Environment variables:**
   - `ROSBRIDGE_HOST`: rosbridge server hostname/IP (default: `127.0.0.1`). **On Harmony, this must be set to your development machine's IP address**
   - `ROSBRIDGE_PORT`: rosbridge server port (default: `9090`)
+  
+  **Configuration on Harmony:**
+  - The `deploy-to-harmony.sh` script can set `ROSBRIDGE_HOST` persistently in `/root/.bashrc`
+  - Usage: `ROSBRIDGE_HOST=<ip> ./deploy-to-harmony.sh`
+  - You can also manually edit `/root/.bashrc` to add: `export ROSBRIDGE_HOST=<ip>`
+  - Environment variables set in the current shell take precedence over `.bashrc` settings
 
 ### Joint Command Topics
 
