@@ -49,8 +49,8 @@ add_library(file_handling STATIC
 target_include_directories(file_handling PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/json/single_include/nlohmann>
-    $<INSTALL_INTERFACE:include/json/single_include/nlohmann>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/json/single_include>
+    $<INSTALL_INTERFACE:include/json/single_include>
     $<BUILD_INTERFACE:${EIGEN_INCLUDE_DIR}>
     $<BUILD_INTERFACE:${PLOG_INCLUDE_DIR}>
 )

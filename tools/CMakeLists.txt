@@ -2,7 +2,8 @@ get_filename_component(THIS_APP_NAME ${CMAKE_CURRENT_SOURCE_DIR} NAME)
 message(STATUS "${THIS_APP_NAME} folder, is ready to build")
 
 add_executable(data_logger data_logger.cpp)
-target_link_libraries(data_logger PRIVATE harmony_research)
+find_package(Threads REQUIRED)
+target_link_libraries(data_logger PRIVATE harmony_research Threads::Threads)
 install(TARGETS data_logger DESTINATION bin/tools)
 
 add_executable(data_exerciser data_exerciser.cpp)
