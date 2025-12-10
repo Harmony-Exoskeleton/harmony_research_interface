@@ -74,9 +74,13 @@ Thumbs.db
 
 # Folders
 build
+build-docker
 log
 .cache
 .vscode
+
+# Docker
+*.dockerignore
 
 # Cursor generated files
 *plan.md
