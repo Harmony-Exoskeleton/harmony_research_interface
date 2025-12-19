@@ -1,6 +1,6 @@
 #!/bin/bash
-# Build script using pre-built Docker image with GLIBC 2.32 compatibility
-# This uses Ubuntu 20.04 which has GLIBC 2.31 (compatible with Harmony's GLIBC 2.32)
+# Build script using pre-built Docker image
+# Uses Ubuntu 18.04 to match Harmony's OS version for structure size compatibility
 #
 # First time setup: Run ./build-docker-image.sh to build the Docker image
 # Then use this script for fast builds
@@ -9,7 +9,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONTAINER_NAME="harmony-build-$(date +%s)"
-IMAGE_NAME="harmony-build:glibc2.32"
+IMAGE_NAME="harmony-build:ubuntu18.04"
 
 echo "Building harmony_ros_interface in Docker container..."
 

@@ -6,7 +6,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 IMAGE_NAME="harmony-build"
-IMAGE_TAG="glibc2.32"
+IMAGE_TAG="ubuntu18.04"
 
 echo "Building Docker image for harmony_ros_interface..."
 echo "Image: ${IMAGE_NAME}:${IMAGE_TAG}"

@@ -47,10 +47,10 @@ using namespace harmony;
 #define ROSBRIDGE_DEFAULT_HOST "127.0.0.1"
 
 // Base link position in map/world frame (in meters)
-// This defines where the robot base_link is located - doesn't have to be at origin
+// Set to origin (0,0,0) with identity rotation to remove offset between map and base_link
 constexpr double BASE_LINK_POSITION_X_M = 0.0;
 constexpr double BASE_LINK_POSITION_Y_M = 0.0;
-constexpr double BASE_LINK_POSITION_Z_M = 0.8;
+constexpr double BASE_LINK_POSITION_Z_M = 0.0;
 constexpr double BASE_LINK_ORIENTATION_QX = 0.0;
 constexpr double BASE_LINK_ORIENTATION_QY = 0.0;
 constexpr double BASE_LINK_ORIENTATION_QZ = 0.0;
@@ -324,6 +324,10 @@ int main(int argc, char* argv[]) {
     
     // Track connection state for re-advertisement
     bool was_connected = transport.IsConnected();
+    
+    // Track when to republish static transforms (every 5 seconds for reliability)
+    auto last_static_tf_publish = std::chrono::steady_clock::now();
+    auto static_tf_republish_interval = std::chrono::seconds(5);
 
     // Main publishing loop
     while (true) { // TODO: Add a condition to exit the loop
@@ -358,6 +362,14 @@ int main(int argc, char* argv[]) {
             setup_joint_command_subscribers(ros_bridge, &research_interface);
         }
         was_connected = is_connected;
+        
+        // Republish static transforms periodically to ensure RViz2 receives them
+        // Static transforms should persist, but this helps with timing issues
+        auto now = std::chrono::steady_clock::now();
+        if (is_connected && (now - last_static_tf_publish) >= static_tf_republish_interval) {
+            setup_tf_static_base_frame();
+            last_static_tf_publish = now;
+        }
                 
         publish_joint_states();
         publish_sizes();
