@@ -4,12 +4,187 @@ This manual provides a step-by-step guide for using the `harmony_ros_interface` 
 
 ## Overview
 
-The `harmony_ros_interface` application runs on the Harmony robot and connects to a rosbridge server on your development machine, enabling ROS2 communication over WebSocket. The system allows you to:
+The `harmony_ros_interface` application runs on the Harmony robot and connects to a rosbridge server on your development machine, enabling ROS2 communication over WebSocket. The system provides comprehensive control and monitoring capabilities for both Harmony robot arms.
 
-- **Monitor** robot state (joint positions, velocities, sizes, end-effector poses)
-- **Control** robot arms in torque or impedance mode
-- **Configure** arm features (gravity compensation, SHR, constraints)
-- **Switch** between control modes (Harmony mode, torque mode, impedance mode)
+## Features
+
+### Control Modes
+
+The system supports three control modes that determine how the robot arms respond to commands:
+
+#### 1. **Harmony Mode** (Default)
+- **Description**: The robot operates under Harmony's default control system. Research interface commands are ignored.
+- **Use Case**: Normal robot operation, safety mode when not actively controlling the robot.
+- **Enable**: This is the default mode. To return to it, disable override mode.
+- **Service**: `/harmony/{left|right}/disable_override_mode`
+
+#### 2. **Torque Mode**
+- **Description**: Direct torque control mode. Only torque commands are accepted; stiffness and position commands are rejected.
+- **Use Case**: Pure torque control for force-based manipulation, impedance learning, or torque-based control algorithms.
+- **Enable**: 
+  ```bash
+  ros2 service call /harmony/{left|right}/enable_torque_mode std_srvs/srv/Trigger
+  ```
+- **Accepted Commands**: `/harmony/{left|right}/desired_torque` only
+- **Rejected Commands**: `/harmony/{left|right}/desired_stiffness`, `/harmony/{left|right}/desired_position`
+
+#### 3. **Impedance Mode**
+- **Description**: Full impedance control mode. Allows simultaneous control of torque, stiffness (spring constant), and position. The arm behaves like a spring-damper system.
+- **Use Case**: Compliant manipulation, position control with adjustable stiffness, hybrid force/position control.
+- **Enable**:
+  ```bash
+  ros2 service call /harmony/{left|right}/enable_impedance_mode std_srvs/srv/Trigger
+  ```
+- **Accepted Commands**: All three command topics:
+  - `/harmony/{left|right}/desired_torque` - Torque in Nm
+  - `/harmony/{left|right}/desired_stiffness` - Stiffness in Nm/rad
+  - `/harmony/{left|right}/desired_position` - Position in radians
+- **Behavior**: Commands can be updated independently. Updating one field preserves the others.
+
+### Arm Features
+
+These features can be enabled or disabled independently of the control mode:
+
+#### 1. **Gravity Compensation**
+- **Description**: Automatically compensates for gravitational forces acting on the arm, reducing the torque required to hold the arm in position.
+- **Use Case**: Essential for torque/impedance control to prevent the arm from falling under its own weight.
+- **Enable/Disable**:
+  ```bash
+  # Enable gravity compensation
+  ros2 service call /harmony/{left|right}/enable_gravity std_srvs/srv/SetBool "{data: true}"
+  
+  # Disable gravity compensation
+  ros2 service call /harmony/{left|right}/enable_gravity std_srvs/srv/SetBool "{data: false}"
+  ```
+- **Recommendation**: Always enable gravity compensation when using torque or impedance mode.
+
+#### 2. **Scapulo-Humeral Rhythm (SHR)**
+- **Description**: Enables the natural coupling between shoulder blade (scapula) and upper arm (humerus) movement, mimicking human arm kinematics.
+- **Use Case**: More natural arm movements, biomechanically accurate motion.
+- **Enable/Disable**:
+  ```bash
+  # Enable SHR
+  ros2 service call /harmony/{left|right}/enable_shr std_srvs/srv/SetBool "{data: true}"
+  
+  # Disable SHR
+  ros2 service call /harmony/{left|right}/enable_shr std_srvs/srv/SetBool "{data: false}"
+  ```
+
+#### 3. **Constraints**
+- **Description**: Enables joint limit constraints and kinematic constraints to prevent unsafe configurations.
+- **Use Case**: Safety feature to prevent the arm from reaching joint limits or singular configurations.
+- **Enable/Disable**:
+  ```bash
+  # Enable constraints
+  ros2 service call /harmony/{left|right}/enable_constraints std_srvs/srv/SetBool "{data: true}"
+  
+  # Disable constraints
+  ros2 service call /harmony/{left|right}/enable_constraints std_srvs/srv/SetBool "{data: false}"
+  ```
+- **Note**: Constraints are only relevant when in `jointsOverride` mode (impedance or torque mode).
+
+### Monitoring Features
+
+#### 1. **Joint States**
+- **Description**: Real-time joint position, velocity, and effort (torque) for all 7 joints of each arm.
+- **Topic**: `/harmony/{left|right}/joint_states`
+- **Message Type**: `sensor_msgs/JointState`
+- **Update Rate**: Configurable (default 100 Hz)
+- **Usage**:
+  ```bash
+  # Monitor left arm joint states
+  ros2 topic echo /harmony/left/joint_states
+  
+  # Monitor right arm joint states
+  ros2 topic echo /harmony/right/joint_states
+  ```
+
+#### 2. **Arm Sizes**
+- **Description**: Real-time measurements of arm segment lengths (in mm) for kinematic calculations.
+- **Topic**: `/harmony/{left|right}/sizes`
+- **Message Type**: `std_msgs/Float64MultiArray`
+- **Update Rate**: Configurable (default 100 Hz)
+- **Usage**:
+  ```bash
+  ros2 topic echo /harmony/left/sizes
+  ros2 topic echo /harmony/right/sizes
+  ```
+
+#### 3. **End-Effector Poses (TF)**
+- **Description**: Transform frames (TF) for end-effector positions and orientations in 3D space.
+- **Topics**: `/tf`, `/tf_static`
+- **Frames**:
+  - `map` → `base_link` (static transform, identity)
+  - `base_link` → `left_end_effector` (dynamic, updated at loop rate)
+  - `base_link` → `right_end_effector` (dynamic, updated at loop rate)
+- **Usage**: Visualize in RViz2 or query with `tf2_ros`:
+  ```bash
+  ros2 run tf2_ros tf2_echo base_link left_end_effector
+  ```
+
+#### 4. **State Queries**
+- **Description**: Query current control mode, feature states, and arm configuration.
+- **Services**:
+  - `/harmony/get_state` - Get state of both arms
+  - `/harmony/left/get_state` - Get state of left arm only
+  - `/harmony/right/get_state` - Get state of right arm only
+- **Usage**:
+  ```bash
+  ros2 service call /harmony/left/get_state std_srvs/srv/Trigger
+  ```
+
+### Command Topics
+
+#### 1. **Torque Commands**
+- **Topic**: `/harmony/{left|right}/desired_torque`
+- **Message Type**: `std_msgs/Float64MultiArray`
+- **Format**: Array of 7 values (one per joint) in Newton-meters (Nm)
+- **Valid Modes**: Torque mode, Impedance mode
+- **Example**:
+  ```bash
+  # Send zero torque to all joints
+  ros2 topic pub /harmony/left/desired_torque std_msgs/msg/Float64MultiArray \
+    "{data: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]}"
+  
+  # Continuous control at 100 Hz
+  ros2 topic pub -r 100 /harmony/left/desired_torque std_msgs/msg/Float64MultiArray \
+    "{data: [1.0, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0]}"
+  ```
+
+#### 2. **Stiffness Commands**
+- **Topic**: `/harmony/{left|right}/desired_stiffness`
+- **Message Type**: `std_msgs/Float64MultiArray`
+- **Format**: Array of 7 values (one per joint) in Nm/rad
+- **Valid Modes**: Impedance mode only
+- **Example**:
+  ```bash
+  # Set medium stiffness (10 Nm/rad per joint)
+  ros2 topic pub /harmony/left/desired_stiffness std_msgs/msg/Float64MultiArray \
+    "{data: [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0]}"
+  ```
+
+#### 3. **Position Commands**
+- **Topic**: `/harmony/{left|right}/desired_position`
+- **Message Type**: `std_msgs/Float64MultiArray`
+- **Format**: Array of 7 values (one per joint) in radians
+- **Valid Modes**: Impedance mode only
+- **Example**:
+  ```bash
+  # Move to a specific joint configuration
+  ros2 topic pub /harmony/left/desired_position std_msgs/msg/Float64MultiArray \
+    "{data: [0.1, 0.2, 0.0, 0.0, 0.0, 0.0, 0.0]}"
+  ```
+
+### Utility Services
+
+#### Reset Shared Memory
+- **Service**: `/harmony/reset_shared_memory`
+- **Description**: Removes all shared memory segments used by the research interface. Useful for troubleshooting or after crashes.
+- **Usage**:
+  ```bash
+  ros2 service call /harmony/reset_shared_memory std_srvs/srv/Trigger
+  ```
+- **Warning**: This will disconnect any active research interface connections. Use with caution.
 
 ## System Architecture
 
@@ -201,9 +376,9 @@ ros2 service call /harmony/right/disable_override_mode std_srvs/srv/Trigger
 
 ### Step 6: Configure Arm Features (Optional)
 
-Configure additional arm features before or during control:
+Configure additional arm features before or during control. For detailed information about each feature, see the [Arm Features](#arm-features) section above.
 
-**Gravity Compensation:**
+**Gravity Compensation** (Recommended for torque/impedance mode):
 ```bash
 # Enable gravity compensation for left arm
 ros2 service call /harmony/left/enable_gravity std_srvs/srv/SetBool "{data: true}"
@@ -234,7 +409,7 @@ ros2 service call /harmony/left/enable_constraints std_srvs/srv/SetBool "{data: 
 
 ### Step 7: Send Joint Commands
 
-Once the arm is in the correct control mode, you can send commands via ROS topics.
+Once the arm is in the correct control mode, you can send commands via ROS topics. For detailed information about command topics, see the [Command Topics](#command-topics) section above.
 
 #### Torque Commands
 
@@ -371,19 +546,23 @@ ros2 service call /harmony/left/disable_override_mode std_srvs/srv/Trigger
 
 ## Control Mode Behavior
 
-### Impedance Mode
+For detailed information about control modes, see the [Features](#control-modes) section above.
+
+### Quick Reference
+
+**Impedance Mode:**
 - **Torque commands**: ✅ Accepted (updates torque, preserves stiffness and position)
 - **Stiffness commands**: ✅ Accepted (updates stiffness, preserves torque and position)
 - **Position commands**: ✅ Accepted (updates position, preserves torque and stiffness)
 - **Use case**: Full control with spring-like behavior
 
-### Torque Mode
+**Torque Mode:**
 - **Torque commands**: ✅ Accepted
 - **Stiffness commands**: ❌ Rejected
 - **Position commands**: ❌ Rejected
 - **Use case**: Direct torque control without position/stiffness
 
-### Harmony Mode (Default)
+**Harmony Mode (Default):**
 - **All commands**: ❌ Rejected (arm controlled by Harmony's default controller)
 - **Use case**: Normal robot operation
 
