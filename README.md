@@ -5,30 +5,93 @@ A ROS2 interface for the Harmony exoskeleton robot using rosbridge, enabling rem
 ## Architecture
 
 ```
-+-------------------+       WebSocket        +------------------+
-|  Dev Machine      |<---------------------->|  Harmony Robot   |
-|                   |       (Port 9090)      |                  |
-| - ROS2            |                        | - harmony_ros_   |
-| - rosbridge_server|                        |   interface      |
-| - Your ROS nodes  |                        | - Shared Memory  |
-+-------------------+                        +------------------+
+┌─────────────────────────────────────────┐      ┌─────────────────────────────────────────┐
+│         DEVELOPMENT MACHINE             │      │            HARMONY ROBOT                │
+│         (e.g. 192.168.2.2)              │      │            (192.168.2.1)                │
+│                                         │      │                                         │
+│  ┌───────────────────────────────────┐  │      │  ┌───────────────────────────────────┐  │
+│  │           ROS2 NODES              │  │      │  │    HARMONY REAL-TIME CONTROL      │  │
+│  │  ┌─────────────┐ ┌─────────────┐  │  │      │  │         (Closed-source)           │  │
+│  │  │ Your Node 1 │ │ Your Node 2 │  │  │      │  │                                   │  │
+│  │  │ (publisher) │ │ (subscriber)│  │  │      │  │  - Real-time control loops        │  │
+│  │  └──────┬──────┘ └──────^──────┘  │  │      │  │  - Internal freeform mode         │  │
+│  │         │               │         │  │      │  │  - Internal impedance mode        │  │
+│  │         v               │         │  │      │  │                                   │  │
+│  │  ┌─────────────────────────────┐  │  │      │  └───────────────┬───────────────────┘  │
+│  │  │      ROS2 Topics/Services   │  │  │      │                  │                      │
+│  │  │  /harmony/left/joint_states │  │  │      │                  │ Shared Memory        │
+│  │  │  /harmony/left/desired_*    │  │  │      │                  │ (IPC)                │
+│  │  │  /harmony/*/enable_*        │  │  │      │                  │                      │
+│  │  └──────────────┬──────────────┘  │  │      │  ┌───────────────v───────────────────┐  │
+│  └─────────────────┼─────────────────┘  │      │  │     HARMONY RESEARCH INTERFACE    │  │
+│                    │                    │      │  │      (harmony_ros_interface)      │  │
+│  ┌─────────────────v─────────────────┐  │      │  │                                   │  │
+│  │        ROSBRIDGE SERVER           │  │      │  │  - Reads joint states             │  │
+│  │        (Port 9090)                │  │      │  │  - Writes torque/stiffness/pos    │  │
+│  │                                   │  │      │  │  - Mode switching                 │  │
+│  │  ros2 launch rosbridge_server     │  │      │  └───────────────┬───────────────────┘  │
+│  │  rosbridge_websocket_launch.xml   │  │      │                  │                      │
+│  └─────────────────┬─────────────────┘  │      │  ┌───────────────v───────────────────┐  │
+│                    │                    │      │  │        ROSBRIDGE CLIENT           │  │
+└────────────────────┼────────────────────┘      │  │  (built-in harmony_ros_interface) │  │
+                     │                           │  └───────────────┬───────────────────┘  │
+                     │      WebSocket            │                  │                      │
+                     │      Connection           └──────────────────┼──────────────────────┘
+                     │      (TCP:9090)                              │
+                     └──────────────────────────────────────────────┘
 ```
 
-- **Harmony Robot**: Runs `harmony_ros_interface` (cross-compiled binary)
-- **Development Machine**: Runs ROS2 with `rosbridge_server` for debugging and control
+**Components:**
+- **Development Machine**: Runs ROS2, your custom nodes, and `rosbridge_server`
+- **Harmony Robot**: Runs the real-time control system and `harmony_ros_interface`
+- **Shared Memory (IPC)**: Communication between Harmony's real-time control and the research interface
+- **WebSocket**: Network bridge between rosbridge server and client (JSON-RPC over TCP)
 
 ## Quick Start
 
-> For detailed build options, see the [Installation Guide](docs/installation.md).
+> For detailed options, see the [Setup Guide](docs/setup.md).
 
-### 1. Install Dependencies (Development Machine)
+### Docker Build Pipeline
 
-```bash
-sudo apt update
-sudo apt install -y docker.io ros-${ROS_DISTRO}-rosbridge-server
+```
+[Development Machine]                          [Harmony Robot]
+     │                                                │
+     V                                                │
+┌───────────────────────┐                             │
+│ 0. Install Docker &   │                             │
+│    Setup Network      │                             │
+│    - docs.docker.com/ │                             │
+│      engine/install/  │                             │
+│    - ufw allow 9090   │                             │
+└───────────┬───────────┘                             │
+            V                                         │
+┌───────────────────────┐                             │
+│ 1. Build Docker Image │                             │
+│    ./build-docker-    │<── Dockerfile               │
+│       image.sh        │    (Ubuntu 18.04)           │
+└───────────┬───────────┘                             │
+            V                                         │
+┌───────────────────────┐                             │
+│ 2. Build Project      │                             │
+│    ./build-in-        │──> build-docker/            │
+│       docker.sh       │    harmony_ros_interface    │
+└───────────┬───────────┘                             │
+            V                                         │
+┌───────────────────────┐     SCP binary        ┌─────┴───────────────┐
+│ 3. Deploy to Harmony  │──────────────────────>│ /opt/hbi/dev/bin/   │
+│    ./deploy-to-       │     + configure       │ tools/              │
+│       harmony.sh      │     ROSBRIDGE_HOST    │ harmony_ros_        │
+└───────────────────────┘                       │ interface           │
+                                                └─────────────────────┘
 ```
 
-### 2. Build with Docker
+### 0. Install Docker & Setup Network (Development Machine)
+
+1. Install Docker following the official guide: https://docs.docker.com/engine/install/ubuntu/
+2. Install rosbridge: `sudo apt install -y ros-${ROS_DISTRO}-rosbridge-server`
+3. Open firewall for rosbridge: `sudo ufw allow 9090/tcp`
+
+### 1. Build with Docker
 
 ```bash
 # Build the Docker image (one-time setup)
@@ -38,23 +101,23 @@ sudo apt install -y docker.io ros-${ROS_DISTRO}-rosbridge-server
 ./build-in-docker.sh
 ```
 
-### 3. Deploy to Harmony
+### 2. Deploy to Harmony
 
 ```bash
 # Deploy with your dev machine's IP
 ROSBRIDGE_HOST=<your-dev-machine-ip> ./deploy-to-harmony.sh
 ```
 
-> For more deployment options and configuration, see the [Deployment Guide](docs/deployment.md).
+> For more options and configuration, see the [Setup Guide](docs/setup.md#deployment).
 
-### 4. Start rosbridge Server (Development Machine)
+### 3. Start rosbridge Server (Development Machine)
 
 ```bash
 source /opt/ros/${ROS_DISTRO}/setup.bash
 ros2 run rosbridge_server rosbridge_websocket --port 9090
 ```
 
-### 5. Launch on Harmony
+### 4. Launch on Harmony
 
 ```bash
 ssh root@192.168.2.1
@@ -62,7 +125,7 @@ cd /opt/hbi/dev/bin/tools
 ./harmony_ros_interface
 ```
 
-### 6. Verify Connection
+### 5. Verify Connection
 
 ```bash
 ros2 topic list              # Should show /harmony/* topics
@@ -78,8 +141,7 @@ ros2 topic echo /harmony/left/joint_states
 
 | Document | Description |
 |----------|-------------|
-| [Installation Guide](docs/installation.md) | Build instructions and Docker setup |
-| [Deployment Guide](docs/deployment.md) | Deploying to Harmony, configuration, network setup |
+| [Setup Guide](docs/setup.md) | Building, deployment, and configuration |
 | [Troubleshooting](docs/troubleshooting.md) | Common issues and solutions |
 | [Usage Manual](application/harmony_ros_interface/README.md) | Control modes, topics, services, and ROS2 commands |
 
