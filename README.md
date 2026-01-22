@@ -1,463 +1,146 @@
-# Harmony Research Interface Library
+# Harmony Research Interface
 
-Code for the research interface library of Harmony. This library provides a ROS2 interface for the Harmony robot using rosbridge, allowing remote control and monitoring of the robot's arms.
+A ROS2 interface for the Harmony exoskeleton robot using rosbridge, enabling remote control and monitoring through shared memory communication.
 
-## Overview
+## Architecture
 
-The `harmony_ros_interface` application runs on the Harmony robot and connects to a rosbridge server, enabling ROS2 communication over WebSocket. The application publishes joint states, arm sizes, and TF transforms, while providing services for state queries and control mode management. Additionally, it subscribes to joint command topics, allowing real-time control of torque, stiffness, and position values for each arm.
+```
++-------------------+       WebSocket        +------------------+
+|  Dev Machine      |<---------------------->|  Harmony Robot   |
+|                   |       (Port 9090)      |                  |
+| - ROS2            |                        | - harmony_ros_   |
+| - rosbridge_server|                        |   interface      |
+| - Your ROS nodes  |                        | - Shared Memory  |
++-------------------+                        +------------------+
+```
 
-**Architecture:**
-- **Harmony Target Machine**: Runs `harmony_ros_interface` (cross-compiled binary)
-- **Development Host Machine**: Runs ROS2 with `rosbridge_server`, used for debugging and control
+- **Harmony Robot**: Runs `harmony_ros_interface` (cross-compiled binary)
+- **Development Machine**: Runs ROS2 with `rosbridge_server` for debugging and control
 
-## Dependencies
+## Quick Start
 
-### On Development Machine (for building and debugging)
+> For detailed build options, see the [Installation Guide](docs/installation.md).
+
+### 1. Install Dependencies (Development Machine)
 
 ```bash
 sudo apt update
-sudo apt install -y cmake build-essential
-sudo apt install -y libwebsocketpp-dev libjsoncpp-dev libbson-dev
-sudo apt install -y ros-${ROS_DISTRO}-rosbridge-suite
-# or
-sudo apt install -y ros-${ROS_DISTRO}-rosbridge-server
+sudo apt install -y docker.io ros-${ROS_DISTRO}-rosbridge-server
 ```
 
-### On Harmony Robot
-
-The Harmony robot needs:
-- Network connectivity to the development machine (where `rosbridge_server` runs)
-
-**Note:** All libraries are statically linked into the `harmony_ros_interface` binary, so no separate library files need to be deployed to Harmony. Harmony does **not** need ROS2 installed - it only needs the binary and network access to connect to the rosbridge server running on your development machine.
-
-## Step-by-Step Guide
-
-### Step 1: Set Up Cross-Compilation Toolchain
-
-The `harmony_ros_interface` application must be cross-compiled for the Harmony robot's architecture (typically ARM-based).
-
-1. **Identify Harmony's architecture:**
-   ```bash
-   # SSH into Harmony and check
-   ssh user@harmony  # (change as needed)
-   uname -m  # Typically armv7l or aarch64
-   ```
-
-2. **Set up cross-compilation toolchain:**
-   
-   For ARM (armv7l):
-   ```bash
-   sudo apt install -y gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf
-   ```
-   
-   For ARM64 (aarch64):
-   ```bash
-   sudo apt install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
-   ```
-
-3. **Create a CMake toolchain file** (e.g., `toolchain-harmony.cmake`):
-   
-   For ARM:
-   ```cmake
-   set(CMAKE_SYSTEM_NAME Linux)
-   set(CMAKE_SYSTEM_PROCESSOR arm)
-   
-   set(CMAKE_C_COMPILER arm-linux-gnueabihf-gcc)
-   set(CMAKE_CXX_COMPILER arm-linux-gnueabihf-g++)
-   
-   set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
-   set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
-   set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
-   set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
-   ```
-   
-   For ARM64:
-   ```cmake
-   set(CMAKE_SYSTEM_NAME Linux)
-   set(CMAKE_SYSTEM_PROCESSOR aarch64)
-   
-   set(CMAKE_C_COMPILER aarch64-linux-gnu-gcc)
-   set(CMAKE_CXX_COMPILER aarch64-linux-gnu-g++)
-   
-   set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
-   set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
-   set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
-   set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
-   ```
-
-### Step 2: Build for Harmony
-
-1. **Create build directory:**
-   ```bash
-   mkdir -p build-harmony
-   cd build-harmony
-   ```
-
-2. **Configure CMake with cross-compilation:**
-   ```bash
-   cmake .. -DCMAKE_TOOLCHAIN_FILE=../toolchain-harmony.cmake
-   ```
-   
-   Or if the toolchain file is in a different location:
-   ```bash
-   cmake .. -DCMAKE_TOOLCHAIN_FILE=/path/to/toolchain-harmony.cmake
-   ```
-
-3. **Verify the build configuration:**
-   - Check that `harmony_research` library is found
-   - Verify the compiler is the cross-compiler (e.g., `arm-linux-gnueabihf-g++`)
-
-4. **Build the project:**
-   ```bash
-   make -j$(nproc)
-   ```
-
-5. **Install (optional, for local testing):**
-   ```bash
-   make install
-   ```
-   
-   This installs to `$HOME/harmony_research/bin/` by default.
-
-### Step 3: Deploy to Harmony
-
-Use the provided deployment script to copy the binary to Harmony:
+### 2. Build with Docker
 
 ```bash
-# Basic deployment (ROSBRIDGE_HOST defaults to 192.168.2.2)
-# This will set ROSBRIDGE_HOST=192.168.2.2 persistently in /root/.bashrc on Harmony
-./deploy-to-harmony.sh
+# Build the Docker image (one-time setup)
+./build-docker-image.sh
 
-# Deployment with custom ROSBRIDGE_HOST
-# This will set ROSBRIDGE_HOST persistently in /root/.bashrc on Harmony
-ROSBRIDGE_HOST=<development-machine-ip> ./deploy-to-harmony.sh
-
-# With custom port (optional, defaults to 9090)
-ROSBRIDGE_HOST=<development-machine-ip> ROSBRIDGE_PORT=9090 ./deploy-to-harmony.sh
+# Build the project
+./build-in-docker.sh
 ```
 
-The script will:
-- Copy the binary to Harmony (default: `/opt/hbi/dev/bin/tools/`)
-- Optionally configure `ROSBRIDGE_HOST` in `/root/.bashrc` (if provided)
-- Verify the deployment
+### 3. Deploy to Harmony
 
-**Note:** If you set `ROSBRIDGE_HOST` during deployment, it will be available in new shell sessions. To use it in the current session, run `source ~/.bashrc` after SSHing into Harmony.
+```bash
+# Deploy with your dev machine's IP
+ROSBRIDGE_HOST=<your-dev-machine-ip> ./deploy-to-harmony.sh
+```
 
-### Step 4: Start rosbridge Server on Development Machine
+> For more deployment options and configuration, see the [Deployment Guide](docs/deployment.md).
 
-Before launching `harmony_ros_interface` on Harmony, start the rosbridge server on your development machine:
+### 4. Start rosbridge Server (Development Machine)
 
-1. **On your development machine, start rosbridge_server:**
-   ```bash
-   # Set up ROS2 environment
-   source /opt/ros/${ROS_DISTRO}/setup.bash
-   
-   # Start rosbridge server
-   ros2 run rosbridge_server rosbridge_websocket --port 9090
-   ```
-   
-   Keep this terminal open, or run it in the background:
-   ```bash
-   ros2 run rosbridge_server rosbridge_websocket --port 9090 &
-   ```
+```bash
+source /opt/ros/${ROS_DISTRO}/setup.bash
+ros2 run rosbridge_server rosbridge_websocket --port 9090
+```
 
-2. **Note the development machine's IP address:**
-   ```bash
-   hostname -I  # or use 'ip addr' to find your IP
-   ```
-   
-   You'll need this IP to configure Harmony to connect to it.
+### 5. Launch on Harmony
 
-### Step 5: Launch on Harmony
+```bash
+ssh root@192.168.2.1
+cd /opt/hbi/dev/bin/tools
+./harmony_ros_interface
+```
 
-1. **SSH into Harmony:**
-   ```bash
-   ssh user@harmony # (change as needed)
-   ```
+### 6. Verify Connection
 
-2. **Launch harmony_ros_interface:**
-   ```bash
-   cd /opt/hbi/dev/bin/tools  # or wherever you deployed the binary
-   
-   # If ROSBRIDGE_HOST was set during deployment, load it (or start a new shell)
-   source ~/.bashrc
-   
-   # Or manually set connection parameters (overrides .bashrc)
-   export ROSBRIDGE_HOST=<development-machine-ip>  # Replace with your dev machine's IP
-   export ROSBRIDGE_PORT=9090
-   
-   # Run with default 100 Hz loop frequency
-   ./harmony_ros_interface
-   
-   # Or specify custom loop frequency (e.g., 50 Hz)
-   ./harmony_ros_interface 50
-   ```
-   
-   **Configuration:**
-   - If `ROSBRIDGE_HOST` was set during deployment, it's stored in `/root/.bashrc` and will be available in new shell sessions
-   - You can manually edit `/root/.bashrc` to change the rosbridge server IP
-   - Environment variables set in the current shell take precedence over `.bashrc`
+```bash
+ros2 topic list              # Should show /harmony/* topics
+ros2 service list            # Should show /harmony/* services
+ros2 topic echo /harmony/left/joint_states
+```
 
-   The application will:
-   - Connect to the rosbridge server on your development machine
-   - Start publishing joint states, sizes, and TF transforms
-   - Advertise all Harmony services
-   - Subscribe to joint command topics for real-time control
+> **Next steps:** See the [Usage Manual](application/harmony_ros_interface/README.md) for control modes, commands, and examples.
+>
+> **Having issues?** Check the [Troubleshooting Guide](docs/troubleshooting.md).
 
-### Step 6: Debug from Development Machine
+## Documentation
 
-From your development machine, you can interact with the Harmony robot using standard ROS2 commands.
+| Document | Description |
+|----------|-------------|
+| [Installation Guide](docs/installation.md) | Build instructions and Docker setup |
+| [Deployment Guide](docs/deployment.md) | Deploying to Harmony, configuration, network setup |
+| [Troubleshooting](docs/troubleshooting.md) | Common issues and solutions |
+| [Usage Manual](application/harmony_ros_interface/README.md) | Control modes, topics, services, and ROS2 commands |
 
-1. **Set up ROS2 environment:**
-   ```bash
-   source /opt/ros/${ROS_DISTRO}/setup.bash
-   ```
+## Quick Reference
 
-2. **Set ROS_DOMAIN_ID (if using ROS2 domains):**
-   ```bash
-   export ROS_DOMAIN_ID=0  # ensure your ROS2 environment uses the correct domain ID
-   ```
+### Topics Published
 
-3. **List available topics:**
-   ```bash
-   ros2 topic list
-   ```
-   
-   You should see:
-   - `/harmony/left/joint_states` (published)
-   - `/harmony/right/joint_states` (published)
-   - `/harmony/left/sizes` (published)
-   - `/harmony/right/sizes` (published)
-   - `/harmony/left/desired_torque` (subscribed)
-   - `/harmony/right/desired_torque` (subscribed)
-   - `/harmony/left/desired_stiffness` (subscribed)
-   - `/harmony/right/desired_stiffness` (subscribed)
-   - `/harmony/left/desired_position` (subscribed)
-   - `/harmony/right/desired_position` (subscribed)
-   - `/tf` (published)
-   - `/tf_static` (published)
+| Topic | Type | Description |
+|-------|------|-------------|
+| `/harmony/{left,right}/joint_states` | `sensor_msgs/JointState` | Joint positions, velocities, torques |
+| `/harmony/{left,right}/sizes` | `std_msgs/Float64MultiArray` | Arm segment lengths (mm) |
+| `/tf`, `/tf_static` | `tf2_msgs/TFMessage` | End-effector transforms |
 
-4. **List available services:**
-   ```bash
-   ros2 service list
-   ```
-   
-   You should see:
-   - `/harmony/get_state`
-   - `/harmony/left/get_state`
-   - `/harmony/right/get_state`
-   - `/harmony/left/disable_override_mode`
-   - `/harmony/right/disable_override_mode`
-   - `/harmony/left/enable_impedance_mode`
-   - `/harmony/left/enable_torque_mode`
-   - `/harmony/right/enable_impedance_mode`
-   - `/harmony/right/enable_torque_mode`
-   - `/harmony/left/enable_gravity`
-   - `/harmony/right/enable_gravity`
-   - `/harmony/left/enable_shr`
-   - `/harmony/right/enable_shr`
-   - `/harmony/left/enable_constraints`
-   - `/harmony/right/enable_constraints`
-   - `/harmony/reset_shared_memory`
+### Topics Subscribed
 
-5. **Get robot state:**
-   ```bash
-   ros2 service call /harmony/get_state std_srvs/srv/Trigger
-   ```
+| Topic | Type | Description |
+|-------|------|-------------|
+| `/harmony/{left,right}/desired_torque` | `std_msgs/Float64MultiArray` | Torque commands (Nm) |
+| `/harmony/{left,right}/desired_stiffness` | `std_msgs/Float64MultiArray` | Stiffness commands (Nm/rad) |
+| `/harmony/{left,right}/desired_position` | `std_msgs/Float64MultiArray` | Position commands (rad) |
 
-6. **Disable override mode (returns arm to harmony mode):**
-   ```bash
-   ros2 service call /harmony/left/disable_override_mode std_srvs/srv/Trigger
-   ros2 service call /harmony/right/disable_override_mode std_srvs/srv/Trigger
-   ```
+### Services
 
-7. **Set control mode:**
-   ```bash
-   # Set left arm to impedance mode
-   ros2 service call /harmony/left/enable_impedance_mode std_srvs/srv/Trigger
-   
-   # Set right arm to torque mode
-   ros2 service call /harmony/right/enable_torque_mode std_srvs/srv/Trigger
-   ```
+| Service | Type | Description |
+|---------|------|-------------|
+| `/harmony/get_state` | `std_srvs/Trigger` | Query robot state |
+| `/harmony/{left,right}/enable_torque_mode` | `std_srvs/Trigger` | Enable torque control |
+| `/harmony/{left,right}/enable_impedance_mode` | `std_srvs/Trigger` | Enable impedance control |
+| `/harmony/{left,right}/disable_override_mode` | `std_srvs/Trigger` | Return to Harmony mode |
+| `/harmony/{left,right}/enable_gravity` | `std_srvs/SetBool` | Toggle gravity compensation |
+| `/harmony/{left,right}/enable_shr` | `std_srvs/SetBool` | Toggle scapulo-humeral rhythm |
+| `/harmony/{left,right}/enable_constraints` | `std_srvs/SetBool` | Toggle joint constraints |
 
-8. **Configure arm features:**
-   ```bash
-   # Enable/disable gravity compensation
-   ros2 service call /harmony/left/enable_gravity std_srvs/srv/SetBool "{data: true}"
-   ros2 service call /harmony/left/enable_gravity std_srvs/srv/SetBool "{data: false}"
-   
-   # Enable/disable SHR (scapulo-humeral rhythm)
-   ros2 service call /harmony/left/enable_shr std_srvs/srv/SetBool "{data: true}"
-   ros2 service call /harmony/left/enable_shr std_srvs/srv/SetBool "{data: false}"
-   
-   # Enable/disable constraints
-   ros2 service call /harmony/left/enable_constraints std_srvs/srv/SetBool "{data: true}"
-   ros2 service call /harmony/left/enable_constraints std_srvs/srv/SetBool "{data: false}"
-   ```
+## Helper Scripts
 
-9. **Reset shared memory:**
-   ```bash
-   ros2 service call /harmony/reset_shared_memory std_srvs/srv/Trigger
-   ```
+| Script | Purpose |
+|--------|---------|
+| `build-docker-image.sh` | Build the Docker image (one-time) |
+| `build-in-docker.sh` | Build the project using Docker |
+| `deploy-to-harmony.sh` | Deploy binary to Harmony robot |
+| `ssh-harmony.sh` | Quick SSH access to Harmony |
+| `check-harmony-versions.sh` | Check Harmony system info |
 
-10. **Monitor joint states:**
-   ```bash
-   ros2 topic echo /harmony/left/joint_states
-   ros2 topic echo /harmony/right/joint_states
-   ```
+## Project Structure
 
-11. **Control arms via topics:**
-   
-   After setting an arm to torque or impedance mode, you can send commands via ROS topics:
-   
-   **Torque commands (works in both torque and impedance modes):**
-   ```bash
-   # Send torque commands to left arm (7 values in Nm)
-   ros2 topic pub /harmony/left/desired_torque std_msgs/msg/Float64MultiArray "{data: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]}"
-   
-   # Send torque commands to right arm
-   ros2 topic pub /harmony/right/desired_torque std_msgs/msg/Float64MultiArray "{data: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]}"
-   ```
-   
-   **Stiffness commands (requires impedance mode):**
-   ```bash
-   # Send stiffness commands to left arm (7 values in Nm/rad)
-   ros2 topic pub /harmony/left/desired_stiffness std_msgs/msg/Float64MultiArray "{data: [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0]}"
-   
-   # Send stiffness commands to right arm
-   ros2 topic pub /harmony/right/desired_stiffness std_msgs/msg/Float64MultiArray "{data: [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0]}"
-   ```
-   
-   **Position commands (requires impedance mode):**
-   ```bash
-   # Send position commands to left arm (7 values in radians)
-   ros2 topic pub /harmony/left/desired_position std_msgs/msg/Float64MultiArray "{data: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]}"
-   
-   # Send position commands to right arm
-   ros2 topic pub /harmony/right/desired_position std_msgs/msg/Float64MultiArray "{data: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]}"
-   ```
-   
-   **Note:** 
-   - In **impedance mode**: Torque, stiffness, and position fields are maintained and can be updated independently. When updating one field (e.g., stiffness), the other fields (e.g., torque, position) are preserved.
-   - In **torque mode**: Only torque commands are accepted. Stiffness and position commands are rejected.
-   - Fields are reset upon mode change.
+```
+harmony_research_interface/
+├── include/                    # Core interface headers
+├── application/
+│   ├── harmony_ros_interface/  # Main ROS interface application
+│   ├── harmony_perturb_torques/# Torque perturbation testing
+│   └── realtime_logger/        # Real-time data logging
+├── tools/                      # Utility programs
+├── resources/                  # Third-party libraries (Eigen, plog, etc.)
+├── lib/                        # Pre-built Harmony research library
+├── tests/                      # Unit tests
+├── docs/                       # Documentation
+├── Dockerfile                  # Build environment definition
+└── *.sh                        # Build and deployment scripts
+```
 
-12. **Visualize in RViz2:**
-    ```bash
-    rviz2
-    ```
-    
-    Add displays for:
-    - TF (to see robot structure)
-    - Joint States (to see joint positions)
-    - Topics (to visualize published data)
+## License
 
-## Troubleshooting
-
-### Connection Issues
-
-**Problem:** `harmony_ros_interface` cannot connect to rosbridge.
-
-**Solutions:**
-- Verify rosbridge_server is running on your development machine: `ros2 node list` should show `/rosbridge_websocket`
-- Check firewall settings on both Harmony and development machine (port 9090 must be open)
-- Verify `ROSBRIDGE_HOST` and `ROSBRIDGE_PORT` environment variables point to your development machine
-- Test connection from Harmony: `telnet <development-machine-ip> 9090` (should connect)
-
-### Cross-Compilation Issues
-
-**Problem:** Build fails with linker errors.
-
-**Solutions:**
-- Ensure `libharmony_research.a` is compiled for the correct architecture
-- Verify all dependencies are available for the target architecture
-- Check that the toolchain file is correctly configured
-
-### ROS2 Discovery Issues
-
-**Problem:** Cannot see Harmony topics/services from development machine.
-
-**Solutions:**
-- Ensure your development machine uses the correct `ROS_DOMAIN_ID` (default is 0)
-- Check network connectivity from development machine: `ping harmony`
-- Verify firewall allows ROS2 multicast (UDP port 7400-7500) on your development machine
-- Try setting `ROS_LOCALHOST_ONLY=0` on your development machine
-
-### Application Crashes
-
-**Problem:** `harmony_ros_interface` crashes on startup.
-
-**Solutions:**
-- Check logs in `~/harmony_research/bin/log/harmony_ros_interface_log.csv`
-- Verify `harmony_research` library is accessible
-- Ensure shared memory is properly set up
-- Check that the Research Interface can initialize
-
-## Additional Information
-
-### Application Configuration
-
-The `harmony_ros_interface` application supports:
-- **Command-line arguments:**
-  - Loop frequency (Hz): `./harmony_ros_interface [frequency]`
-  - Help: `./harmony_ros_interface --help`
-
-- **Environment variables:**
-  - `ROSBRIDGE_HOST`: rosbridge server hostname/IP (default: `127.0.0.1`). **On Harmony, this must be set to your development machine's IP address**
-  - `ROSBRIDGE_PORT`: rosbridge server port (default: `9090`)
-  
-  **Configuration on Harmony:**
-  - The `deploy-to-harmony.sh` script can set `ROSBRIDGE_HOST` persistently in `/root/.bashrc`
-  - Usage: `ROSBRIDGE_HOST=<ip> ./deploy-to-harmony.sh`
-  - You can also manually edit `/root/.bashrc` to add: `export ROSBRIDGE_HOST=<ip>`
-  - Environment variables set in the current shell take precedence over `.bashrc` settings
-
-### Joint Command Topics
-
-The application subscribes to the following topics for real-time joint control:
-
-- **Torque commands** (`/harmony/left/desired_torque`, `/harmony/right/desired_torque`):
-  - Message type: `std_msgs/Float64MultiArray`
-  - Requires: Arm must be in **torque mode** or **impedance mode** (use `/harmony/{left|right}/enable_torque_mode` or `/harmony/{left|right}/enable_impedance_mode` service)
-  - Format: Array of 7 double values (torque in Nm for each joint)
-  - Behavior: Updates torque values while preserving other fields. Commands are rejected if arm is not in torque or impedance mode.
-
-- **Stiffness commands** (`/harmony/left/desired_stiffness`, `/harmony/right/desired_stiffness`):
-  - Message type: `std_msgs/Float64MultiArray`
-  - Requires: Arm must be in **impedance mode** (use `/harmony/{left|right}/enable_impedance_mode` service)
-  - Format: Array of 7 double values (stiffness in Nm/rad for each joint)
-  - Behavior: Updates stiffness values while preserving torque and position. Commands are rejected if arm is not in impedance mode.
-
-- **Position commands** (`/harmony/left/desired_position`, `/harmony/right/desired_position`):
-  - Message type: `std_msgs/Float64MultiArray`
-  - Requires: Arm must be in **impedance mode** (use `/harmony/{left|right}/enable_impedance_mode` service)
-  - Format: Array of 7 double values (position in radians for each joint)
-  - Behavior: Updates position values while preserving torque and stiffness. Commands are rejected if arm is not in impedance mode.
-
-**Important Notes:**
-- Commands are only processed when the arm is in the correct control mode. Commands sent in the wrong mode are rejected.
-- In **impedance mode**: Torque, stiffness, and position fields are maintained and can be updated independently. When updating one field, the other fields are preserved.
-- In **torque mode**: Only torque commands are accepted. Stiffness and position commands are rejected.
-- Fields are reset upon mode change.
-- All topics use `Float64MultiArray` with exactly 7 values (one per joint)
-- Debug logging (PLOGI) shows which fields are being updated for troubleshooting
-
-### Logging
-
-Logs are written to: `~/harmony_research/bin/log/harmony_ros_interface_log.csv`
-
-The application logs:
-- Info level (PLOGI): Joint override updates, mode changes, subscriber status
-- Debug level (PLOGD): Detailed preservation of values when updating single field types
-
-### Build Output
-
-The build process creates:
-- `harmony_ros_interface`: Main application binary (in `build/application/harmony_ros_interface/`)
-- Various tools in `build-harmony/tools/`
-- Libraries in `build-harmony/resources/`
-
-### Installation Path
-
-By default, binaries are installed to: `$HOME/harmony_research/bin/`
-You can change this by setting `CMAKE_INSTALL_PREFIX` during CMake configuration.
+See individual library licenses in `resources/` for third-party dependencies.

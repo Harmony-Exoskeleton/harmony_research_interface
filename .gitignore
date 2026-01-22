@@ -73,14 +73,20 @@ Thumbs.db
 *.exe
 
 # Folders
-build
-build-docker
-log
-.cache
-.vscode
+build/
+build-*/
+log/
+.cache/
+.vscode/
+
+# Build artifacts in lib (keep libharmony_research.a)
+lib/*.p/
+lib/**/*.o
 
 # Docker
 *.dockerignore
 
-# Cursor generated files
+# Editor/IDE files
 *plan.md
+*.swp
+*~
