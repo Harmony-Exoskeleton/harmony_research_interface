@@ -79,9 +79,10 @@ log/
 .cache/
 .vscode/
 
-# Build artifacts in lib (keep libharmony_research.a)
-lib/*.p/
-lib/**/*.o
+# Build artifacts in lib (keep libharmony_research.a and its .o files for thin archive)
+!lib/libharmony_research.a
+!lib/libharmony_research.a.p/
+!lib/libharmony_research.a.p/*.o
 
 # Docker
 *.dockerignore
